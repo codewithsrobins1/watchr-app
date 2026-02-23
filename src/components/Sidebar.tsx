@@ -59,13 +59,17 @@ export default function Sidebar({
   const [showCreateCommunity, setShowCreateCommunity] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Delete confirmation
-  const [deleteTarget, setDeleteTarget] = useState<{
-    type: 'board' | 'community';
+  // Confirm action (delete/leave) modal
+  const [confirmAction, setConfirmAction] = useState<{
+    type:
+      | 'delete-board'
+      | 'delete-community'
+      | 'leave-board'
+      | 'leave-community';
     id: string;
     name: string;
   } | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [processing, setProcessing] = useState(false);
 
   // Notifications
   const [showNotifications, setShowNotifications] = useState(false);
@@ -368,48 +372,73 @@ export default function Sidebar({
     setDecliningId(null);
   };
 
-  const handleDelete = async () => {
-    if (!deleteTarget || !user) return;
-    setDeleting(true);
+  const handleConfirmAction = async () => {
+    if (!confirmAction || !user) return;
+    setProcessing(true);
 
     try {
-      if (deleteTarget.type === 'board') {
+      if (confirmAction.type === 'delete-board') {
         const { error } = await supabase
           .from('boards')
           .delete()
-          .eq('id', deleteTarget.id)
+          .eq('id', confirmAction.id)
           .eq('owner_id', user.id);
 
         if (!error) {
-          setMyBoards((prev) => prev.filter((b) => b.id !== deleteTarget.id));
-          if (selectedBoardId === deleteTarget.id) {
-            const remaining = myBoards.filter((b) => b.id !== deleteTarget.id);
+          setMyBoards((prev) => prev.filter((b) => b.id !== confirmAction.id));
+          if (selectedBoardId === confirmAction.id) {
+            const remaining = myBoards.filter((b) => b.id !== confirmAction.id);
             setSelectedBoardId(remaining.length > 0 ? remaining[0].id : null);
           }
         }
-      } else {
+      } else if (confirmAction.type === 'delete-community') {
         const { error } = await supabase
           .from('communities')
           .delete()
-          .eq('id', deleteTarget.id)
+          .eq('id', confirmAction.id)
           .eq('owner_id', user.id);
 
         if (!error) {
           setCommunities((prev) =>
-            prev.filter((c) => c.id !== deleteTarget.id)
+            prev.filter((c) => c.id !== confirmAction.id)
           );
-          if (selectedCommunityId === deleteTarget.id) {
+          if (selectedCommunityId === confirmAction.id) {
             setSelectedCommunityId(null);
             setCurrentView('board');
           }
         }
+      } else if (confirmAction.type === 'leave-board') {
+        await supabase
+          .from('board_members')
+          .delete()
+          .eq('board_id', confirmAction.id)
+          .eq('user_id', user.id);
+
+        setSharedBoards((prev) =>
+          prev.filter((b) => b.id !== confirmAction.id)
+        );
+        if (selectedBoardId === confirmAction.id) {
+          setSelectedBoardId(myBoards.length > 0 ? myBoards[0].id : null);
+        }
+      } else if (confirmAction.type === 'leave-community') {
+        await supabase
+          .from('community_members')
+          .delete()
+          .eq('community_id', confirmAction.id)
+          .eq('user_id', user.id);
+
+        setCommunities((prev) => prev.filter((c) => c.id !== confirmAction.id));
+        if (selectedCommunityId === confirmAction.id) {
+          setSelectedCommunityId(null);
+          setCurrentView('board');
+        }
       }
     } catch (err) {
-      console.error('Delete error:', err);
+      console.error('Action error:', err);
     }
 
-    setDeleting(false);
-    setDeleteTarget(null);
+    setProcessing(false);
+    setConfirmAction(null);
   };
 
   const handleBoardCreated = (board: Board) => {
@@ -422,52 +451,6 @@ export default function Sidebar({
     setCommunities((prev) => [community, ...prev]);
     setSelectedCommunityId(community.id);
     setCurrentView('community');
-  };
-
-  const handleLeaveBoard = async (boardId: string, boardName: string) => {
-    if (!user) return;
-
-    const confirmed = window.confirm(
-      `Are you sure you want to leave "${boardName}"?`
-    );
-    if (!confirmed) return;
-
-    await supabase
-      .from('board_members')
-      .delete()
-      .eq('board_id', boardId)
-      .eq('user_id', user.id);
-
-    setSharedBoards((prev) => prev.filter((b) => b.id !== boardId));
-
-    if (selectedBoardId === boardId) {
-      setSelectedBoardId(myBoards.length > 0 ? myBoards[0].id : null);
-    }
-  };
-
-  const handleLeaveCommunity = async (
-    communityId: string,
-    communityName: string
-  ) => {
-    if (!user) return;
-
-    const confirmed = window.confirm(
-      `Are you sure you want to leave "${communityName}"?`
-    );
-    if (!confirmed) return;
-
-    await supabase
-      .from('community_members')
-      .delete()
-      .eq('community_id', communityId)
-      .eq('user_id', user.id);
-
-    setCommunities((prev) => prev.filter((c) => c.id !== communityId));
-
-    if (selectedCommunityId === communityId) {
-      setSelectedCommunityId(null);
-      setCurrentView('board');
-    }
   };
 
   const isOwner = (community: Community) => community.owner_id === user?.id;
@@ -487,9 +470,9 @@ export default function Sidebar({
           <Image
             src={darkMode ? '/logo_dark_800w.png' : '/logo_white_800w.png'}
             alt="Watchr"
-            width={250}
-            height={100}
-            className="h-10 w-auto"
+            width={200}
+            height={200}
+            className="h-auto w-auto"
           />
         </div>
 
@@ -552,8 +535,8 @@ export default function Sidebar({
                     </button>
                     <button
                       onClick={() =>
-                        setDeleteTarget({
-                          type: 'board',
+                        setConfirmAction({
+                          type: 'delete-board',
                           id: board.id,
                           name: board.name,
                         })
@@ -622,11 +605,17 @@ export default function Sidebar({
                       </span>
                     </button>
                     <button
-                      onClick={() => handleLeaveBoard(board.id, board.name)}
-                      className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20"
+                      onClick={() =>
+                        setConfirmAction({
+                          type: 'leave-board',
+                          id: board.id,
+                          name: board.name,
+                        })
+                      }
+                      className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-orange-500/20"
                       title="Leave board"
                     >
-                      <LogOut className="w-4 h-4 text-red-500" />
+                      <LogOut className="w-4 h-4 text-orange-500" />
                     </button>
                   </div>
                 ))}
@@ -683,8 +672,8 @@ export default function Sidebar({
                   {isOwner(comm) ? (
                     <button
                       onClick={() =>
-                        setDeleteTarget({
-                          type: 'community',
+                        setConfirmAction({
+                          type: 'delete-community',
                           id: comm.id,
                           name: comm.name,
                         })
@@ -696,11 +685,17 @@ export default function Sidebar({
                     </button>
                   ) : (
                     <button
-                      onClick={() => handleLeaveCommunity(comm.id, comm.name)}
-                      className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20"
+                      onClick={() =>
+                        setConfirmAction({
+                          type: 'leave-community',
+                          id: comm.id,
+                          name: comm.name,
+                        })
+                      }
+                      className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-orange-500/20"
                       title="Leave community"
                     >
-                      <LogOut className="w-4 h-4 text-red-500" />
+                      <LogOut className="w-4 h-4 text-orange-500" />
                     </button>
                   )}
                 </div>
@@ -869,7 +864,7 @@ export default function Sidebar({
                     className="text-sm mt-1"
                     style={{ color: theme.textMuted }}
                   >
-                    You're all caught up!
+                    You&apos;re all caught up!
                   </p>
                 </div>
               ) : (
@@ -944,11 +939,11 @@ export default function Sidebar({
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      {deleteTarget && (
+      {/* Confirm Action Modal (Delete/Leave) */}
+      {confirmAction && (
         <div
           className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
-          onClick={() => setDeleteTarget(null)}
+          onClick={() => setConfirmAction(null)}
         >
           <div
             className="w-full max-w-md rounded-2xl p-6"
@@ -959,32 +954,49 @@ export default function Sidebar({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
-                <AlertTriangle className="w-6 h-6 text-red-500" />
+              <div
+                className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                  confirmAction.type.startsWith('leave')
+                    ? 'bg-orange-500/20'
+                    : 'bg-red-500/20'
+                }`}
+              >
+                {confirmAction.type.startsWith('leave') ? (
+                  <LogOut className="w-6 h-6 text-orange-500" />
+                ) : (
+                  <AlertTriangle className="w-6 h-6 text-red-500" />
+                )}
               </div>
               <div>
                 <h2 className="text-lg font-bold" style={{ color: theme.text }}>
-                  Delete {deleteTarget.type === 'board' ? 'Board' : 'Community'}
+                  {confirmAction.type.startsWith('leave') ? 'Leave' : 'Delete'}{' '}
+                  {confirmAction.type.includes('board') ? 'Board' : 'Community'}
                   ?
                 </h2>
                 <p className="text-sm" style={{ color: theme.textMuted }}>
-                  This action cannot be undone
+                  {confirmAction.type.startsWith('leave')
+                    ? 'You can rejoin if invited again'
+                    : 'This action cannot be undone'}
                 </p>
               </div>
             </div>
 
             <p className="mb-6" style={{ color: theme.textSecondary }}>
-              Are you sure you want to delete{' '}
-              <strong style={{ color: theme.text }}>{deleteTarget.name}</strong>
+              Are you sure you want to{' '}
+              {confirmAction.type.startsWith('leave') ? 'leave' : 'delete'}{' '}
+              <strong style={{ color: theme.text }}>
+                {confirmAction.name}
+              </strong>
               ?
-              {deleteTarget.type === 'board'
-                ? ' All cards in this board will be permanently deleted.'
-                : ' All members will be removed from this community.'}
+              {confirmAction.type === 'delete-board' &&
+                ' All cards will be permanently deleted.'}
+              {confirmAction.type === 'delete-community' &&
+                ' All members will be removed.'}
             </p>
 
             <div className="flex gap-3">
               <button
-                onClick={() => setDeleteTarget(null)}
+                onClick={() => setConfirmAction(null)}
                 className="flex-1 py-3 rounded-xl font-medium"
                 style={{
                   backgroundColor: theme.bgTertiary,
@@ -994,11 +1006,21 @@ export default function Sidebar({
                 Cancel
               </button>
               <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex-1 py-3 rounded-xl font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-50"
+                onClick={handleConfirmAction}
+                disabled={processing}
+                className={`flex-1 py-3 rounded-xl font-medium text-white disabled:opacity-50 ${
+                  confirmAction.type.startsWith('leave')
+                    ? 'bg-orange-500 hover:bg-orange-600'
+                    : 'bg-red-500 hover:bg-red-600'
+                }`}
               >
-                {deleting ? 'Deleting...' : 'Delete'}
+                {processing
+                  ? confirmAction.type.startsWith('leave')
+                    ? 'Leaving...'
+                    : 'Deleting...'
+                  : confirmAction.type.startsWith('leave')
+                    ? 'Leave'
+                    : 'Delete'}
               </button>
             </div>
           </div>
