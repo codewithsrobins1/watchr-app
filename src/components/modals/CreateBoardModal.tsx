@@ -1,75 +1,89 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { useAuth, useTheme } from '@/hooks'
-import { createClient } from '@/lib/supabase/client'
-import { BOARD_ICONS } from '@/lib/utils'
-import type { Board } from '@/types'
-import { X, Loader2 } from 'lucide-react'
+import { useState } from 'react';
+import { useAuth, useTheme } from '@/hooks';
+import { createClient } from '@/lib/supabase/client';
+import { BOARD_ICONS } from '@/lib/utils';
+import type { Board } from '@/types';
+import { X, Loader2 } from 'lucide-react';
 
 interface CreateBoardModalProps {
-  onClose: () => void
-  onCreated: (board: Board) => void
+  onClose: () => void;
+  onCreated: (board: Board) => void;
 }
 
-export default function CreateBoardModal({ onClose, onCreated }: CreateBoardModalProps) {
-  const { profile } = useAuth()
-  const { theme } = useTheme()
-  const supabase = createClient()
+export default function CreateBoardModal({
+  onClose,
+  onCreated,
+}: CreateBoardModalProps) {
+  const { user } = useAuth(); // Changed from profile to user
+  const { theme } = useTheme();
+  const supabase = createClient();
 
-  const [name, setName] = useState('')
-  const [icon, setIcon] = useState('📺')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [name, setName] = useState('');
+  const [icon, setIcon] = useState('📺');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!name.trim() || !profile) return
+    e.preventDefault();
+    if (!name.trim() || !user) return; // Changed from profile to user
 
-    setLoading(true)
-    setError('')
+    setLoading(true);
+    setError('');
 
     try {
       // Create board
       const { data: board, error: boardError } = await supabase
         .from('boards')
-        .insert({ name: name.trim(), icon, owner_id: profile.id })
+        .insert({ name: name.trim(), icon, owner_id: user.id }) // Changed from profile.id to user.id
         .select()
-        .single()
+        .single();
 
       if (boardError) {
-        console.error('Create board error:', boardError)
-        setError(boardError.message)
-        setLoading(false)
-        return
+        console.error('Create board error:', boardError);
+        setError(boardError.message);
+        setLoading(false);
+        return;
       }
 
       // Add owner as member
       await supabase.from('board_members').insert({
         board_id: board.id,
-        user_id: profile.id,
-        role: 'owner'
-      })
+        user_id: user.id, // Changed from profile.id to user.id
+        role: 'owner',
+      });
 
-      onCreated(board)
-      onClose()
+      onCreated(board);
+      onClose();
     } catch (err) {
-      console.error('Create board exception:', err)
-      setError('Failed to create board')
-      setLoading(false)
+      console.error('Create board exception:', err);
+      setError('Failed to create board');
+      setLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 modal-overlay" onClick={onClose}>
-      <div 
+    <div
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 modal-overlay"
+      onClick={onClose}
+    >
+      <div
         className="w-full max-w-md rounded-2xl p-6 modal-content"
-        style={{ backgroundColor: theme.bgSecondary, border: `1px solid ${theme.border}` }}
-        onClick={e => e.stopPropagation()}
+        style={{
+          backgroundColor: theme.bgSecondary,
+          border: `1px solid ${theme.border}`,
+        }}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold" style={{ color: theme.text }}>Create New Board</h2>
-          <button onClick={onClose} className="p-2 rounded-full bg-red-500 hover:bg-red-600 text-white btn-hover">
+          <h2 className="text-xl font-bold" style={{ color: theme.text }}>
+            Create New Board
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full bg-red-500 hover:bg-red-600 text-white btn-hover"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -82,32 +96,47 @@ export default function CreateBoardModal({ onClose, onCreated }: CreateBoardModa
           )}
 
           <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: theme.textSecondary }}>Board Name</label>
+            <label
+              className="block text-sm font-medium mb-2"
+              style={{ color: theme.textSecondary }}
+            >
+              Board Name
+            </label>
             <input
               type="text"
               value={name}
-              onChange={e => setName(e.target.value)}
+              onChange={(e) => setName(e.target.value)}
               placeholder="My Awesome Board"
               required
               disabled={loading}
               className="w-full px-4 py-3 rounded-xl outline-none transition-all focus:ring-2 disabled:opacity-50"
-              style={{ backgroundColor: theme.bgTertiary, border: `1px solid ${theme.border}`, color: theme.text }}
+              style={{
+                backgroundColor: theme.bgTertiary,
+                border: `1px solid ${theme.border}`,
+                color: theme.text,
+              }}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: theme.textSecondary }}>Icon</label>
+            <label
+              className="block text-sm font-medium mb-2"
+              style={{ color: theme.textSecondary }}
+            >
+              Icon
+            </label>
             <div className="flex gap-2 flex-wrap">
-              {BOARD_ICONS.map(emoji => (
+              {BOARD_ICONS.map((emoji) => (
                 <button
                   key={emoji}
                   type="button"
                   onClick={() => setIcon(emoji)}
                   disabled={loading}
                   className="w-10 h-10 rounded-xl text-xl transition-all hover:scale-110 flex items-center justify-center disabled:opacity-50"
-                  style={{ 
-                    backgroundColor: icon === emoji ? theme.accent.bg : theme.bgTertiary,
-                    border: `2px solid ${icon === emoji ? theme.accent.primary : 'transparent'}`
+                  style={{
+                    backgroundColor:
+                      icon === emoji ? theme.accent.bg : theme.bgTertiary,
+                    border: `2px solid ${icon === emoji ? theme.accent.primary : 'transparent'}`,
                   }}
                 >
                   {emoji}
@@ -117,26 +146,36 @@ export default function CreateBoardModal({ onClose, onCreated }: CreateBoardModa
           </div>
 
           <div className="flex gap-3 pt-2">
-            <button 
-              type="button" 
-              onClick={onClose} 
+            <button
+              type="button"
+              onClick={onClose}
               disabled={loading}
               className="flex-1 py-3 rounded-xl font-medium btn-hover disabled:opacity-50"
-              style={{ backgroundColor: theme.bgTertiary, color: theme.textSecondary }}
+              style={{
+                backgroundColor: theme.bgTertiary,
+                color: theme.textSecondary,
+              }}
             >
               Cancel
             </button>
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               disabled={loading || !name.trim()}
               className="flex-1 py-3 rounded-xl font-medium text-white btn-hover disabled:opacity-50 flex items-center justify-center gap-2"
               style={{ backgroundColor: theme.accent.primary }}
             >
-              {loading ? <><Loader2 className="w-4 h-4 spinner" />Creating...</> : 'Create'}
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 spinner" />
+                  Creating...
+                </>
+              ) : (
+                'Create'
+              )}
             </button>
           </div>
         </form>
       </div>
     </div>
-  )
+  );
 }
