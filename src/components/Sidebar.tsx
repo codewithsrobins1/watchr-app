@@ -685,7 +685,7 @@ export default function Sidebar({
               className="flex-1 text-sm font-medium truncate"
               style={{ color: theme.text }}
             >
-              {profile?.username || 'User'}
+              {profile?.username || user?.email?.split('@')[0] || 'User'}
             </span>
             <button
               onClick={signOut}
