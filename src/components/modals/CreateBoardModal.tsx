@@ -63,7 +63,7 @@ export default function CreateBoardModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-1 sm:p-4"
       onClick={onClose}
     >
       <div
