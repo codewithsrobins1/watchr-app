@@ -459,7 +459,7 @@ export default function Sidebar({
   return (
     <>
       <div
-        className="w-64 flex-shrink-0 flex flex-col h-screen"
+        className="w-[85vw] sm:w-64 flex-shrink-0 flex flex-col h-screen"
         style={{
           backgroundColor: theme.bgSecondary,
           borderRight: `1px solid ${theme.border}`,
