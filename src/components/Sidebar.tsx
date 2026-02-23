@@ -445,6 +445,31 @@ export default function Sidebar({
     }
   };
 
+  const handleLeaveCommunity = async (
+    communityId: string,
+    communityName: string
+  ) => {
+    if (!user) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to leave "${communityName}"?`
+    );
+    if (!confirmed) return;
+
+    await supabase
+      .from('community_members')
+      .delete()
+      .eq('community_id', communityId)
+      .eq('user_id', user.id);
+
+    setCommunities((prev) => prev.filter((c) => c.id !== communityId));
+
+    if (selectedCommunityId === communityId) {
+      setSelectedCommunityId(null);
+      setCurrentView('board');
+    }
+  };
+
   const isOwner = (community: Community) => community.owner_id === user?.id;
   const pendingCount = invitations.length;
 
@@ -655,7 +680,7 @@ export default function Sidebar({
                       {comm.name}
                     </span>
                   </button>
-                  {isOwner(comm) && (
+                  {isOwner(comm) ? (
                     <button
                       onClick={() =>
                         setDeleteTarget({
@@ -668,6 +693,14 @@ export default function Sidebar({
                       title="Delete community"
                     >
                       <Trash2 className="w-4 h-4 text-red-500" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleLeaveCommunity(comm.id, comm.name)}
+                      className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20"
+                      title="Leave community"
+                    >
+                      <LogOut className="w-4 h-4 text-red-500" />
                     </button>
                   )}
                 </div>
