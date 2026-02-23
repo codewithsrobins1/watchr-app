@@ -424,6 +424,27 @@ export default function Sidebar({
     setCurrentView('community');
   };
 
+  const handleLeaveBoard = async (boardId: string, boardName: string) => {
+    if (!user) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to leave "${boardName}"?`
+    );
+    if (!confirmed) return;
+
+    await supabase
+      .from('board_members')
+      .delete()
+      .eq('board_id', boardId)
+      .eq('user_id', user.id);
+
+    setSharedBoards((prev) => prev.filter((b) => b.id !== boardId));
+
+    if (selectedBoardId === boardId) {
+      setSelectedBoardId(myBoards.length > 0 ? myBoards[0].id : null);
+    }
+  };
+
   const isOwner = (community: Community) => community.owner_id === user?.id;
   const pendingCount = invitations.length;
 
@@ -541,38 +562,48 @@ export default function Sidebar({
               </span>
               <div className="mt-2 space-y-1">
                 {sharedBoards.map((board) => (
-                  <button
-                    key={board.id}
-                    onClick={() => {
-                      setSelectedBoardId(board.id);
-                      setCurrentView('board');
-                    }}
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all"
-                    style={{
-                      backgroundColor:
-                        selectedBoardId === board.id && currentView === 'board'
-                          ? theme.accent.bg
-                          : 'transparent',
-                      color:
-                        selectedBoardId === board.id && currentView === 'board'
-                          ? theme.accent.primary
-                          : theme.textSecondary,
-                    }}
-                  >
-                    <span className="text-lg">{board.icon}</span>
-                    <span className="flex-1 truncate text-sm font-medium">
-                      {board.name}
-                    </span>
-                    <span
-                      className="text-xs px-1.5 py-0.5 rounded"
+                  <div key={board.id} className="group flex items-center">
+                    <button
+                      onClick={() => {
+                        setSelectedBoardId(board.id);
+                        setCurrentView('board');
+                      }}
+                      className="flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all"
                       style={{
-                        backgroundColor: theme.bgTertiary,
-                        color: theme.textMuted,
+                        backgroundColor:
+                          selectedBoardId === board.id &&
+                          currentView === 'board'
+                            ? theme.accent.bg
+                            : 'transparent',
+                        color:
+                          selectedBoardId === board.id &&
+                          currentView === 'board'
+                            ? theme.accent.primary
+                            : theme.textSecondary,
                       }}
                     >
-                      Shared
-                    </span>
-                  </button>
+                      <span className="text-lg">{board.icon}</span>
+                      <span className="flex-1 truncate text-sm font-medium">
+                        {board.name}
+                      </span>
+                      <span
+                        className="text-xs px-1.5 py-0.5 rounded"
+                        style={{
+                          backgroundColor: theme.bgTertiary,
+                          color: theme.textMuted,
+                        }}
+                      >
+                        Shared
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => handleLeaveBoard(board.id, board.name)}
+                      className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20"
+                      title="Leave board"
+                    >
+                      <LogOut className="w-4 h-4 text-red-500" />
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
