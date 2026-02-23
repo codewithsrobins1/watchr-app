@@ -459,7 +459,7 @@ export default function Sidebar({
   return (
     <>
       <div
-        className="w-[85vw] sm:w-64 flex-shrink-0 flex flex-col h-screen"
+        className="w-[85vw] sm:w-64 flex-shrink-0 flex flex-col h-[100dvh] sm:h-screen overflow-hidden"
         style={{
           backgroundColor: theme.bgSecondary,
           borderRight: `1px solid ${theme.border}`,
@@ -489,7 +489,7 @@ export default function Sidebar({
         </div>
 
         {/* Scrollable */}
-        <div className="flex-1 overflow-auto px-4 space-y-6">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 space-y-6 min-h-0">
           {/* My Boards */}
           <div>
             <span
@@ -706,7 +706,7 @@ export default function Sidebar({
 
         {/* Bottom */}
         <div
-          className="p-4 space-y-2"
+          className="p-3 sm:pb-4 space-y-2 flex-shrink-0"
           style={{ borderTop: `1px solid ${theme.border}` }}
         >
           {/* Notifications */}

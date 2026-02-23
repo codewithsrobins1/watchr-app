@@ -9,7 +9,7 @@ import {
   calculateAverageRating,
   ACCENT_COLORS,
 } from '@/lib/utils';
-import type { Community, CommunityFeedItem } from '@/types';
+import type { Community, CommunityFeedItem, Card } from '@/types';
 import StarRating from './StarRating';
 import InviteModal from './modals/InviteModal';
 import { UserPlus, Info, X, Loader2 } from 'lucide-react';
@@ -53,7 +53,6 @@ export default function CommunityView({
         .from('community_members')
         .select('user_id')
         .eq('community_id', communityId);
-
       if (!members?.length) {
         setLoading(false);
         return;
@@ -110,7 +109,7 @@ export default function CommunityView({
       const { data: myCards } = await supabase
         .from('cards')
         .select('tmdb_id')
-        .eq('added_by', user?.id);
+        .eq('added_by', user.id);
       if (myCards) setMyCardIds(new Set(myCards.map((c) => c.tmdb_id)));
 
       setLoading(false);
@@ -240,24 +239,24 @@ export default function CommunityView({
                         <StarRating rating={Number(avgRating)} size="xs" />
                         <span
                           className="text-xs font-medium"
-                          style={{ color: '#facc15' }}
+                          style={{ color: theme.textSecondary }}
                         >
                           {Number(avgRating).toFixed(1)}
                         </span>
                       </div>
                     )}
 
-                    <div className="flex items-center gap-1 mt-2">
+                    <div className="flex items-center gap-2 mt-2">
                       <div className="flex -space-x-1">
                         {item.watchers.slice(0, 3).map((w, i) => (
                           <div
                             key={i}
-                            className="w-5 h-5 rounded-full flex items-center justify-center text-xs border"
+                            className="w-5 h-5 rounded-full flex items-center justify-center text-xs"
                             style={{
-                              backgroundColor:
-                                ACCENT_COLORS[w.accent_color]?.bg,
-                              borderColor:
-                                ACCENT_COLORS[w.accent_color]?.primary,
+                              backgroundColor: ACCENT_COLORS[w.accent_color]?.bg,
+                              border: `1.5px solid ${
+                                ACCENT_COLORS[w.accent_color]?.primary
+                              }`,
                             }}
                           >
                             {w.avatar_emoji}
@@ -344,7 +343,7 @@ export default function CommunityView({
         </div>
         <button
           onClick={() => setShowInvite(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl font-medium text-white btn-hover"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl font-medium text-white"
           style={{ backgroundColor: theme.accent.primary }}
         >
           <UserPlus className="w-4 h-4" />
@@ -362,11 +361,11 @@ export default function CommunityView({
       {/* Detail Modal */}
       {selected && (
         <div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 modal-overlay"
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
           onClick={() => setSelected(null)}
         >
           <div
-            className="w-full max-w-md rounded-2xl p-6 modal-content"
+            className="w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
             style={{ backgroundColor: theme.bgSecondary }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -376,9 +375,9 @@ export default function CommunityView({
               </h2>
               <button
                 onClick={() => setSelected(null)}
-                className="p-2 rounded-full bg-red-500 text-white"
+                className="p-2.5 rounded-full bg-red-500 text-white"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -456,7 +455,7 @@ export default function CommunityView({
             {myCardIds.has(selected.tmdb_id) ? (
               <button
                 disabled
-                className="w-full py-3 rounded-xl font-medium"
+                className="w-full py-4 rounded-xl font-medium text-base"
                 style={{
                   backgroundColor: theme.bgTertiary,
                   color: theme.textMuted,
@@ -468,12 +467,12 @@ export default function CommunityView({
               <button
                 onClick={handleAddToBacklog}
                 disabled={adding}
-                className="w-full py-3 rounded-xl font-medium text-white btn-hover disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full py-4 rounded-xl font-medium text-white disabled:opacity-50 flex items-center justify-center gap-2 text-base"
                 style={{ backgroundColor: theme.accent.primary }}
               >
                 {adding ? (
                   <>
-                    <Loader2 className="w-4 h-4 spinner" />
+                    <Loader2 className="w-5 h-5 spinner" />
                     Adding...
                   </>
                 ) : (

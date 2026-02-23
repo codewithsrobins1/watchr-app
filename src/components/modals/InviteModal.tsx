@@ -18,7 +18,7 @@ export default function InviteModal({
   targetId,
   onClose,
 }: InviteModalProps) {
-  const { profile } = useAuth();
+  const { user } = useAuth();
   const { theme } = useTheme();
   const supabase = createClient();
 
@@ -41,7 +41,7 @@ export default function InviteModal({
         .from('profiles')
         .select('*')
         .or(`username.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`)
-        .neq('id', profile?.id)
+        .neq('id', user?.id)
         .limit(10);
 
       if (data) setResults(data);
@@ -49,10 +49,10 @@ export default function InviteModal({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchQuery, profile?.id, supabase]);
+  }, [searchQuery, user?.id, supabase]);
 
   const handleInvite = async (userId: string) => {
-    if (!profile || invitedIds.has(userId)) return;
+    if (!user || invitedIds.has(userId)) return;
 
     setInviting(userId);
 
@@ -62,7 +62,7 @@ export default function InviteModal({
 
     const { error } = await supabase.from(tableName).insert({
       [idField]: targetId,
-      inviter_id: profile.id,
+      inviter_id: user.id,
       invitee_id: userId,
       status: 'pending',
     });
@@ -82,11 +82,11 @@ export default function InviteModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 modal-overlay"
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl p-6 modal-content"
+        className="w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
         style={{
           backgroundColor: theme.bgSecondary,
           border: `1px solid ${theme.border}`,
@@ -99,9 +99,9 @@ export default function InviteModal({
           </h2>
           <button
             onClick={onClose}
-            className="p-2 rounded-full bg-red-500 hover:bg-red-600 text-white btn-hover"
+            className="p-2.5 rounded-full bg-red-500 hover:bg-red-600 text-white"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -116,7 +116,7 @@ export default function InviteModal({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search users..."
-            className="w-full px-4 py-3 pl-11 rounded-xl outline-none transition-all focus:ring-2"
+            className="w-full px-4 py-4 pl-11 rounded-xl outline-none transition-all focus:ring-2 text-base"
             style={{
               backgroundColor: theme.bgTertiary,
               border: `1px solid ${theme.border}`,
@@ -151,37 +151,37 @@ export default function InviteModal({
             </p>
           )}
 
-          {results.map((user) => {
-            const isInvited = invitedIds.has(user.id);
-            const isInviting = inviting === user.id;
+          {results.map((foundUser) => {
+            const isInvited = invitedIds.has(foundUser.id);
+            const isInviting = inviting === foundUser.id;
 
             return (
               <div
-                key={user.id}
+                key={foundUser.id}
                 className="flex items-center gap-3 p-3 rounded-xl"
                 style={{ backgroundColor: theme.bgTertiary }}
               >
                 <div
                   className="w-10 h-10 rounded-full flex items-center justify-center text-xl"
                   style={{
-                    backgroundColor: ACCENT_COLORS[user.accent_color]?.bg,
-                    border: `2px solid ${ACCENT_COLORS[user.accent_color]?.primary}`,
+                    backgroundColor: ACCENT_COLORS[foundUser.accent_color]?.bg,
+                    border: `2px solid ${ACCENT_COLORS[foundUser.accent_color]?.primary}`,
                   }}
                 >
-                  {user.avatar_emoji}
+                  {foundUser.avatar_emoji}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div
                     className="font-medium truncate"
                     style={{ color: theme.text }}
                   >
-                    {user.username}
+                    {foundUser.username}
                   </div>
                   <div
                     className="text-xs truncate"
                     style={{ color: theme.textMuted }}
                   >
-                    {user.email}
+                    {foundUser.email}
                   </div>
                 </div>
                 {isInvited ? (
@@ -191,9 +191,9 @@ export default function InviteModal({
                   </div>
                 ) : (
                   <button
-                    onClick={() => handleInvite(user.id)}
+                    onClick={() => handleInvite(foundUser.id)}
                     disabled={isInviting}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium text-white btn-hover disabled:opacity-50"
+                    className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
                     style={{ backgroundColor: theme.accent.primary }}
                   >
                     {isInviting ? (
