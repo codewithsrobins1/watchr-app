@@ -270,7 +270,7 @@ function DroppableColumn({
 }
 
 export default function BoardView({ boardId }: { boardId: string | null }) {
-  const { profile } = useAuth();
+  const { user } = useAuth();
   const { theme, darkMode } = useTheme();
   const supabase = createClient();
 
@@ -432,7 +432,7 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
   };
 
   const handleAddCard = async () => {
-    if (!selectedResult || !boardId || !profile) return;
+    if (!selectedResult || !boardId || !user) return;
     setAddLoading(true);
 
     try {
@@ -462,7 +462,7 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
         position,
         rating: null,
         is_private: addPrivate,
-        added_by: profile.id,
+        added_by: user.id,
       };
 
       const { error } = await supabase.from('cards').insert(newCard);
