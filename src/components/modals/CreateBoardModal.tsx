@@ -63,11 +63,11 @@ export default function CreateBoardModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 modal-overlay"
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
       onClick={onClose}
     >
       <div
-        className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-6 sm:p-6 modal-content max-h-[90vh] overflow-auto"
+        className="w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
         style={{
           backgroundColor: theme.bgSecondary,
           border: `1px solid ${theme.border}`,
@@ -75,15 +75,12 @@ export default function CreateBoardModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-6">
-          <h2
-            className="text-xl sm:text-xl font-bold"
-            style={{ color: theme.text }}
-          >
+          <h2 className="text-xl font-bold" style={{ color: theme.text }}>
             Create New Board
           </h2>
           <button
             onClick={onClose}
-            className="p-2.5 rounded-full bg-red-500 hover:bg-red-600 text-white btn-hover"
+            className="p-2.5 rounded-full bg-red-500 hover:bg-red-600 text-white"
           >
             <X className="w-5 h-5" />
           </button>
@@ -126,7 +123,7 @@ export default function CreateBoardModal({
             >
               Icon
             </label>
-            <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
+            <div className="grid grid-cols-7 gap-2">
               {BOARD_ICONS.map((emoji) => (
                 <button
                   key={emoji}
@@ -146,12 +143,12 @@ export default function CreateBoardModal({
             </div>
           </div>
 
-          <div className="flex gap-3 pt-4 pb-2">
+          <div className="flex gap-3 pt-4">
             <button
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="flex-1 py-4 rounded-xl font-medium btn-hover disabled:opacity-50 text-base"
+              className="flex-1 py-4 rounded-xl font-medium disabled:opacity-50 text-base"
               style={{
                 backgroundColor: theme.bgTertiary,
                 color: theme.textSecondary,
@@ -162,7 +159,7 @@ export default function CreateBoardModal({
             <button
               type="submit"
               disabled={loading || !name.trim()}
-              className="flex-1 py-4 rounded-xl font-medium text-white btn-hover disabled:opacity-50 flex items-center justify-center gap-2 text-base"
+              className="flex-1 py-4 rounded-xl font-medium text-white disabled:opacity-50 flex items-center justify-center gap-2 text-base"
               style={{ backgroundColor: theme.accent.primary }}
             >
               {loading ? (
