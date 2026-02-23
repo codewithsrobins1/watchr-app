@@ -106,24 +106,11 @@ export default function SettingsView() {
               />
               <p className="text-xs mt-1" style={{ color: theme.textMuted }}>Email cannot be changed</p>
             </div>
-
-            {message && (
-              <p className={`text-sm font-medium ${message.startsWith('Error') ? 'text-red-500' : 'text-green-500'}`}>{message}</p>
-            )}
-
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-6 py-2.5 rounded-xl font-medium text-white btn-hover disabled:opacity-50 flex items-center gap-2"
-              style={{ backgroundColor: theme.accent.primary }}
-            >
-              {saving ? <><Loader2 className="w-4 h-4 spinner" />Saving...</> : 'Save Changes'}
-            </button>
           </div>
         </div>
 
         {/* Appearance */}
-        <div className="rounded-2xl p-6" style={{ backgroundColor: theme.bgSecondary, border: `1px solid ${theme.border}` }}>
+        <div className="rounded-2xl p-6 mb-6" style={{ backgroundColor: theme.bgSecondary, border: `1px solid ${theme.border}` }}>
           <h2 className="text-lg font-semibold mb-6" style={{ color: theme.text }}>Appearance</h2>
 
           {/* Dark Mode */}
@@ -164,6 +151,20 @@ export default function SettingsView() {
             </div>
           </div>
         </div>
+
+        {/* Save Button - Moved to bottom */}
+        {message && (
+          <p className={`text-sm font-medium mb-4 ${message.startsWith('Error') ? 'text-red-500' : 'text-green-500'}`}>{message}</p>
+        )}
+
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="w-full sm:w-auto px-8 py-3 rounded-xl font-medium text-white btn-hover disabled:opacity-50 flex items-center justify-center gap-2"
+          style={{ backgroundColor: theme.accent.primary }}
+        >
+          {saving ? <><Loader2 className="w-4 h-4 spinner" />Saving...</> : 'Save Changes'}
+        </button>
       </div>
     </div>
   )

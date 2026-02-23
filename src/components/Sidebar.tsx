@@ -541,7 +541,7 @@ export default function Sidebar({
                           name: board.name,
                         })
                       }
-                      className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20"
+                      className="p-1.5 rounded-lg hidden group-hover:block hover:bg-red-500/20"
                       title="Delete board"
                     >
                       <Trash2 className="w-4 h-4 text-red-500" />
@@ -612,7 +612,7 @@ export default function Sidebar({
                           name: board.name,
                         })
                       }
-                      className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-orange-500/20"
+                      className="p-1.5 rounded-lg hidden group-hover:block hover:bg-orange-500/20"
                       title="Leave board"
                     >
                       <LogOut className="w-4 h-4 text-orange-500" />
@@ -678,7 +678,7 @@ export default function Sidebar({
                           name: comm.name,
                         })
                       }
-                      className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20"
+                      className="p-1.5 rounded-lg hidden group-hover:block hover:bg-red-500/20"
                       title="Delete community"
                     >
                       <Trash2 className="w-4 h-4 text-red-500" />
@@ -692,7 +692,7 @@ export default function Sidebar({
                           name: comm.name,
                         })
                       }
-                      className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-orange-500/20"
+                      className="p-1.5 rounded-lg hidden group-hover:block hover:bg-orange-500/20"
                       title="Leave community"
                     >
                       <LogOut className="w-4 h-4 text-orange-500" />

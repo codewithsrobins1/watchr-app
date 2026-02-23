@@ -12,7 +12,7 @@ import type { Card, Board, ColumnId, TMDBSearchResult, BoardMember, Profile } fr
 import StarRating from './StarRating'
 import FilterDropdown from './FilterDropdown'
 import InviteModal from './modals/InviteModal'
-import { Search, Filter, Trash2, Lock, UserPlus, X, Loader2, Info } from 'lucide-react'
+import { Search, Filter, Trash2, Lock, UserPlus, X, Loader2, Info, Pencil, Check } from 'lucide-react'
 import Image from 'next/image'
 
 function SortableCard({ card, onDelete, onShowInfo, isDark, theme }: { 
@@ -149,6 +149,11 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [activeColumn, setActiveColumn] = useState<ColumnId | null>(null)
 
+  // Editable board name state
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [editedName, setEditedName] = useState('')
+  const [savingName, setSavingName] = useState(false)
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   )
@@ -160,7 +165,10 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
       setLoading(true)
       
       const { data: boardData } = await supabase.from('boards').select('*').eq('id', boardId).single()
-      if (boardData) setBoard(boardData)
+      if (boardData) {
+        setBoard(boardData)
+        setEditedName(boardData.name)
+      }
 
       const { data: cardsData } = await supabase
         .from('cards')
@@ -222,9 +230,26 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
     return result
   }, [cards, filters])
 
-  const findColumnForCard = (cardId: string): ColumnId | null => {
-    const card = cards.find(c => c.id === cardId)
-    return card?.column_id || null
+  const handleSaveBoardName = async () => {
+    if (!boardId || !editedName.trim() || savingName) return
+    setSavingName(true)
+
+    const { error } = await supabase
+      .from('boards')
+      .update({ name: editedName.trim() })
+      .eq('id', boardId)
+
+    if (!error) {
+      setBoard(prev => prev ? { ...prev, name: editedName.trim() } : null)
+    }
+
+    setSavingName(false)
+    setIsEditingName(false)
+  }
+
+  const handleCancelEdit = () => {
+    setEditedName(board?.name || '')
+    setIsEditingName(false)
   }
 
   const handleAddCard = async () => {
@@ -421,7 +446,58 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
           <span className="text-2xl">{board?.icon}</span>
-          <h1 className="text-xl font-bold" style={{ color: theme.text }}>{board?.name}</h1>
+          
+          {/* Editable Board Name */}
+          {isEditingName ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={editedName}
+                onChange={(e) => setEditedName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveBoardName()
+                  if (e.key === 'Escape') handleCancelEdit()
+                }}
+                autoFocus
+                className="text-xl font-bold px-2 py-1 rounded-lg outline-none focus:ring-2"
+                style={{ 
+                  backgroundColor: theme.bgTertiary, 
+                  border: `1px solid ${theme.border}`, 
+                  color: theme.text,
+                  minWidth: '150px'
+                }}
+              />
+              <button
+                onClick={handleSaveBoardName}
+                disabled={savingName || !editedName.trim()}
+                className="p-2 rounded-lg text-white disabled:opacity-50"
+                style={{ backgroundColor: theme.accent.primary }}
+                title="Save"
+              >
+                {savingName ? <Loader2 className="w-4 h-4 spinner" /> : <Check className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={handleCancelEdit}
+                className="p-2 rounded-lg"
+                style={{ backgroundColor: theme.bgTertiary, color: theme.textMuted }}
+                title="Cancel"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 group">
+              <h1 className="text-xl font-bold" style={{ color: theme.text }}>{board?.name}</h1>
+              <button
+                onClick={() => setIsEditingName(true)}
+                className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ backgroundColor: theme.bgTertiary }}
+                title="Edit board name"
+              >
+                <Pencil className="w-4 h-4" style={{ color: theme.textMuted }} />
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">

@@ -9,11 +9,22 @@ import {
   calculateAverageRating,
   ACCENT_COLORS,
 } from '@/lib/utils';
-import type { Community, CommunityFeedItem, Card } from '@/types';
+import type { Community, CommunityFeedItem, Board, AccentColor } from '@/types';
 import StarRating from './StarRating';
 import InviteModal from './modals/InviteModal';
-import { UserPlus, Info, X, Loader2 } from 'lucide-react';
+import { UserPlus, Users, X, Loader2, Trash2 } from 'lucide-react';
 import Image from 'next/image';
+
+interface CommunityMember {
+  user_id: string;
+  role: string;
+  profile: {
+    id: string;
+    username: string;
+    avatar_emoji: string;
+    accent_color: string;
+  };
+}
 
 export default function CommunityView({
   communityId,
@@ -33,6 +44,19 @@ export default function CommunityView({
   const [showInvite, setShowInvite] = useState(false);
   const [adding, setAdding] = useState(false);
 
+  // Board selector state
+  const [myBoards, setMyBoards] = useState<Board[]>([]);
+  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
+
+  // View Members state
+  const [showMembers, setShowMembers] = useState(false);
+  const [members, setMembers] = useState<CommunityMember[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<CommunityMember | null>(null);
+
+  const isOwner = community?.owner_id === user?.id;
+
   useEffect(() => {
     if (!communityId || !user) {
       setLoading(false);
@@ -49,16 +73,16 @@ export default function CommunityView({
         .single();
       if (comm) setCommunity(comm);
 
-      const { data: members } = await supabase
+      const { data: membersData } = await supabase
         .from('community_members')
         .select('user_id')
         .eq('community_id', communityId);
-      if (!members?.length) {
+      if (!membersData?.length) {
         setLoading(false);
         return;
       }
 
-      const memberIds = members.map((m) => m.user_id);
+      const memberIds = membersData.map((m) => m.user_id);
       const { data: cards } = await supabase
         .from('cards')
         .select(
@@ -112,29 +136,59 @@ export default function CommunityView({
         .eq('added_by', user.id);
       if (myCards) setMyCardIds(new Set(myCards.map((c) => c.tmdb_id)));
 
+      // Fetch user's boards for the board selector
+      const { data: boards } = await supabase
+        .from('boards')
+        .select('*')
+        .eq('owner_id', user.id)
+        .order('created_at', { ascending: false });
+      if (boards) {
+        setMyBoards(boards);
+        if (boards.length > 0) setSelectedBoardId(boards[0].id);
+      }
+
       setLoading(false);
     };
 
     fetchData();
   }, [communityId, user, supabase]);
 
+  const fetchMembers = async () => {
+    if (!communityId) return;
+    setLoadingMembers(true);
+
+    const { data } = await supabase
+      .from('community_members')
+      .select('user_id, role, profile:profiles(id, username, avatar_emoji, accent_color)')
+      .eq('community_id', communityId);
+
+    if (data) {
+      setMembers(data as unknown as CommunityMember[]);
+    }
+    setLoadingMembers(false);
+  };
+
+  const handleRemoveMember = async () => {
+    if (!confirmRemove || !communityId) return;
+    setRemovingMemberId(confirmRemove.user_id);
+
+    await supabase
+      .from('community_members')
+      .delete()
+      .eq('community_id', communityId)
+      .eq('user_id', confirmRemove.user_id);
+
+    setMembers((prev) => prev.filter((m) => m.user_id !== confirmRemove.user_id));
+    setRemovingMemberId(null);
+    setConfirmRemove(null);
+  };
+
   const handleAddToBacklog = async () => {
-    if (!selected || !user) return;
+    if (!selected || !user || !selectedBoardId) return;
     setAdding(true);
 
-    const { data: boards } = await supabase
-      .from('boards')
-      .select('id')
-      .eq('owner_id', user.id)
-      .limit(1);
-    if (!boards?.length) {
-      alert('Please create a board first!');
-      setAdding(false);
-      return;
-    }
-
     await supabase.from('cards').insert({
-      board_id: boards[0].id,
+      board_id: selectedBoardId,
       tmdb_id: selected.tmdb_id,
       media_type: selected.media_type,
       title: selected.title,
@@ -190,7 +244,8 @@ export default function CommunityView({
             return (
               <div
                 key={item.tmdb_id}
-                className="rounded-xl p-4 card-hover group"
+                onClick={() => setSelected(item)}
+                className="rounded-xl p-4 cursor-pointer transition-all hover:scale-[1.02] hover:shadow-lg"
                 style={{
                   backgroundColor: theme.bgCard,
                   border: `1px solid ${theme.border}`,
@@ -206,24 +261,12 @@ export default function CommunityView({
                     />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3
-                        className="font-semibold text-sm line-clamp-2"
-                        style={{ color: theme.text }}
-                      >
-                        {item.title}
-                      </h3>
-                      <button
-                        onClick={() => setSelected(item)}
-                        className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                        style={{ backgroundColor: theme.bgTertiary }}
-                      >
-                        <Info
-                          className="w-4 h-4"
-                          style={{ color: theme.textMuted }}
-                        />
-                      </button>
-                    </div>
+                    <h3
+                      className="font-semibold text-sm line-clamp-2"
+                      style={{ color: theme.text }}
+                    >
+                      {item.title}
+                    </h3>
                     <span
                       className="px-2 py-0.5 rounded text-xs font-medium mt-1 inline-block"
                       style={{
@@ -253,9 +296,9 @@ export default function CommunityView({
                             key={i}
                             className="w-5 h-5 rounded-full flex items-center justify-center text-xs"
                             style={{
-                              backgroundColor: ACCENT_COLORS[w.accent_color]?.bg,
+                              backgroundColor: ACCENT_COLORS[w.accent_color as AccentColor]?.bg,
                               border: `1.5px solid ${
-                                ACCENT_COLORS[w.accent_color]?.primary
+                                ACCENT_COLORS[w.accent_color as AccentColor]?.primary
                               }`,
                             }}
                           >
@@ -341,18 +384,31 @@ export default function CommunityView({
             Community
           </span>
         </div>
-        <button
-          onClick={() => setShowInvite(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl font-medium text-white"
-          style={{ backgroundColor: theme.accent.primary }}
-        >
-          <UserPlus className="w-4 h-4" />
-          Invite
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setShowMembers(true);
+              fetchMembers();
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl font-medium"
+            style={{ backgroundColor: theme.bgTertiary, color: theme.textSecondary }}
+          >
+            <Users className="w-4 h-4" />
+            Members
+          </button>
+          <button
+            onClick={() => setShowInvite(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl font-medium text-white"
+            style={{ backgroundColor: theme.accent.primary }}
+          >
+            <UserPlus className="w-4 h-4" />
+            Invite
+          </button>
+        </div>
       </div>
 
       <p className="text-sm mb-6" style={{ color: theme.textMuted }}>
-        👥 See what everyone is watching • Click ⓘ to add to your board
+        👥 See what everyone is watching • Click any card to view details
       </p>
 
       {renderSection('Currently Watching', watching, '#3b82f6', true)}
@@ -424,8 +480,8 @@ export default function CommunityView({
                     <div
                       className="w-7 h-7 rounded-full flex items-center justify-center text-sm"
                       style={{
-                        backgroundColor: ACCENT_COLORS[w.accent_color]?.bg,
-                        border: `2px solid ${ACCENT_COLORS[w.accent_color]?.primary}`,
+                        backgroundColor: ACCENT_COLORS[w.accent_color as AccentColor]?.bg,
+                        border: `2px solid ${ACCENT_COLORS[w.accent_color as AccentColor]?.primary}`,
                       }}
                     >
                       {w.avatar_emoji}
@@ -464,22 +520,186 @@ export default function CommunityView({
                 Already in Your Boards
               </button>
             ) : (
-              <button
-                onClick={handleAddToBacklog}
-                disabled={adding}
-                className="w-full py-4 rounded-xl font-medium text-white disabled:opacity-50 flex items-center justify-center gap-2 text-base"
-                style={{ backgroundColor: theme.accent.primary }}
-              >
-                {adding ? (
-                  <>
-                    <Loader2 className="w-5 h-5 spinner" />
-                    Adding...
-                  </>
+              <>
+                {/* Board Selector */}
+                {myBoards.length > 0 ? (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2" style={{ color: theme.textSecondary }}>
+                      Add to Board
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {myBoards.map((board) => (
+                        <button
+                          key={board.id}
+                          onClick={() => setSelectedBoardId(board.id)}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-left"
+                          style={{
+                            backgroundColor: selectedBoardId === board.id ? theme.accent.bg : theme.bgTertiary,
+                            border: `2px solid ${selectedBoardId === board.id ? theme.accent.primary : 'transparent'}`,
+                            color: selectedBoardId === board.id ? theme.accent.primary : theme.textSecondary,
+                          }}
+                        >
+                          <span className="text-lg">{board.icon}</span>
+                          <span className="text-sm font-medium truncate">{board.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ) : (
-                  'Add to My Backlog'
+                  <p className="text-sm mb-4 text-center" style={{ color: theme.textMuted }}>
+                    Create a board first to add shows
+                  </p>
                 )}
-              </button>
+
+                <button
+                  onClick={handleAddToBacklog}
+                  disabled={adding || myBoards.length === 0}
+                  className="w-full py-4 rounded-xl font-medium text-white disabled:opacity-50 flex items-center justify-center gap-2 text-base"
+                  style={{ backgroundColor: theme.accent.primary }}
+                >
+                  {adding ? (
+                    <>
+                      <Loader2 className="w-5 h-5 spinner" />
+                      Adding...
+                    </>
+                  ) : (
+                    'Add to Backlog'
+                  )}
+                </button>
+              </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* View Members Modal */}
+      {showMembers && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
+          onClick={() => setShowMembers(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
+            style={{ backgroundColor: theme.bgSecondary, border: `1px solid ${theme.border}` }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Users className="w-5 h-5" style={{ color: theme.accent.primary }} />
+                <h2 className="text-lg font-bold" style={{ color: theme.text }}>
+                  Members
+                </h2>
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full"
+                  style={{ backgroundColor: theme.bgTertiary, color: theme.textMuted }}
+                >
+                  {members.length}
+                </span>
+              </div>
+              <button
+                onClick={() => setShowMembers(false)}
+                className="p-2 rounded-full hover:bg-red-500/20"
+                style={{ color: theme.textMuted }}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {loadingMembers ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="w-6 h-6 spinner" style={{ color: theme.accent.primary }} />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {members.map((member) => (
+                  <div
+                    key={member.user_id}
+                    className="flex items-center gap-3 p-3 rounded-xl"
+                    style={{ backgroundColor: theme.bgTertiary }}
+                  >
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-xl"
+                      style={{
+                        backgroundColor: ACCENT_COLORS[member.profile.accent_color as AccentColor]?.bg,
+                        border: `2px solid ${ACCENT_COLORS[member.profile.accent_color as AccentColor]?.primary}`,
+                      }}
+                    >
+                      {member.profile.avatar_emoji}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate" style={{ color: theme.text }}>
+                        {member.profile.username}
+                      </div>
+                      {member.role === 'owner' && (
+                        <span className="text-xs" style={{ color: theme.accent.primary }}>
+                          Owner
+                        </span>
+                      )}
+                    </div>
+                    {isOwner && member.user_id !== user?.id && (
+                      <button
+                        onClick={() => setConfirmRemove(member)}
+                        disabled={removingMemberId === member.user_id}
+                        className="p-2 rounded-lg hover:bg-red-500/20 disabled:opacity-50"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Remove Modal */}
+      {confirmRemove && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4"
+          onClick={() => setConfirmRemove(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl p-6"
+            style={{ backgroundColor: theme.bgSecondary, border: `1px solid ${theme.border}` }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-500" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold" style={{ color: theme.text }}>
+                  Remove Member?
+                </h2>
+                <p className="text-sm" style={{ color: theme.textMuted }}>
+                  This action cannot be undone
+                </p>
+              </div>
+            </div>
+
+            <p className="mb-6" style={{ color: theme.textSecondary }}>
+              Are you sure you want to remove{' '}
+              <strong style={{ color: theme.text }}>{confirmRemove.profile.username}</strong>{' '}
+              from this community?
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmRemove(null)}
+                className="flex-1 py-3 rounded-xl font-medium"
+                style={{ backgroundColor: theme.bgTertiary, color: theme.textSecondary }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRemoveMember}
+                disabled={removingMemberId === confirmRemove.user_id}
+                className="flex-1 py-3 rounded-xl font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-50"
+              >
+                {removingMemberId === confirmRemove.user_id ? 'Removing...' : 'Remove'}
+              </button>
+            </div>
           </div>
         </div>
       )}
