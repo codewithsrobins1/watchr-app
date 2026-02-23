@@ -16,8 +16,21 @@ import {
   Trash2,
   X,
   AlertTriangle,
+  Bell,
+  Check,
+  UserPlus,
 } from 'lucide-react';
 import Image from 'next/image';
+
+interface Invitation {
+  id: string;
+  type: 'board' | 'community';
+  name: string;
+  icon: string;
+  inviter_username: string;
+  inviter_avatar: string;
+  created_at: string;
+}
 
 interface SidebarProps {
   currentView: ViewType;
@@ -54,6 +67,12 @@ export default function Sidebar({
     name: string;
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Notifications
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [decliningId, setDecliningId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -114,6 +133,9 @@ export default function Sidebar({
             return [...prev, ...owned.filter((c) => !existing.has(c.id))];
           });
         }
+
+        // Fetch pending invitations
+        await fetchInvitations();
       } catch (err) {
         console.error('Sidebar fetch error:', err);
       }
@@ -124,18 +146,183 @@ export default function Sidebar({
     fetchData();
   }, [user, supabase, selectedBoardId, setSelectedBoardId]);
 
+  const fetchInvitations = async () => {
+    if (!user) return;
+
+    const allInvitations: Invitation[] = [];
+
+    // Fetch board invitations
+    const { data: boardInvites } = await supabase
+      .from('board_invitations')
+      .select(
+        'id, board_id, inviter_id, created_at, boards(name, icon), profiles!board_invitations_inviter_id_fkey(username, avatar_emoji)'
+      )
+      .eq('invitee_id', user.id)
+      .eq('status', 'pending');
+
+    if (boardInvites) {
+      boardInvites.forEach((inv: any) => {
+        if (inv.boards && inv.profiles) {
+          allInvitations.push({
+            id: inv.id,
+            type: 'board',
+            name: inv.boards.name,
+            icon: inv.boards.icon,
+            inviter_username: inv.profiles.username,
+            inviter_avatar: inv.profiles.avatar_emoji,
+            created_at: inv.created_at,
+          });
+        }
+      });
+    }
+
+    // Fetch community invitations
+    const { data: commInvites } = await supabase
+      .from('community_invitations')
+      .select(
+        'id, community_id, inviter_id, created_at, communities(name, icon), profiles!community_invitations_inviter_id_fkey(username, avatar_emoji)'
+      )
+      .eq('invitee_id', user.id)
+      .eq('status', 'pending');
+
+    if (commInvites) {
+      commInvites.forEach((inv: any) => {
+        if (inv.communities && inv.profiles) {
+          allInvitations.push({
+            id: inv.id,
+            type: 'community',
+            name: inv.communities.name,
+            icon: inv.communities.icon,
+            inviter_username: inv.profiles.username,
+            inviter_avatar: inv.profiles.avatar_emoji,
+            created_at: inv.created_at,
+          });
+        }
+      });
+    }
+
+    setInvitations(
+      allInvitations.sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+    );
+  };
+
+  const handleAcceptInvitation = async (invitation: Invitation) => {
+    if (!user) return;
+    setAcceptingId(invitation.id);
+
+    try {
+      if (invitation.type === 'board') {
+        // Get board_id from invitation
+        const { data: inv } = await supabase
+          .from('board_invitations')
+          .select('board_id')
+          .eq('id', invitation.id)
+          .single();
+
+        if (inv) {
+          // Add as member
+          await supabase.from('board_members').insert({
+            board_id: inv.board_id,
+            user_id: user.id,
+            role: 'member',
+          });
+
+          // Update invitation status
+          await supabase
+            .from('board_invitations')
+            .update({ status: 'accepted' })
+            .eq('id', invitation.id);
+
+          // Refresh shared boards
+          const { data: board } = await supabase
+            .from('boards')
+            .select('*')
+            .eq('id', inv.board_id)
+            .single();
+
+          if (board) {
+            setSharedBoards((prev) => [...prev, board]);
+          }
+        }
+      } else {
+        // Get community_id from invitation
+        const { data: inv } = await supabase
+          .from('community_invitations')
+          .select('community_id')
+          .eq('id', invitation.id)
+          .single();
+
+        if (inv) {
+          // Add as member
+          await supabase.from('community_members').insert({
+            community_id: inv.community_id,
+            user_id: user.id,
+            role: 'member',
+          });
+
+          // Update invitation status
+          await supabase
+            .from('community_invitations')
+            .update({ status: 'accepted' })
+            .eq('id', invitation.id);
+
+          // Refresh communities
+          const { data: comm } = await supabase
+            .from('communities')
+            .select('*')
+            .eq('id', inv.community_id)
+            .single();
+
+          if (comm) {
+            setCommunities((prev) => [...prev, comm]);
+          }
+        }
+      }
+
+      // Remove from invitations list
+      setInvitations((prev) => prev.filter((i) => i.id !== invitation.id));
+    } catch (err) {
+      console.error('Accept invitation error:', err);
+    }
+
+    setAcceptingId(null);
+  };
+
+  const handleDeclineInvitation = async (invitation: Invitation) => {
+    setDecliningId(invitation.id);
+
+    try {
+      const table =
+        invitation.type === 'board'
+          ? 'board_invitations'
+          : 'community_invitations';
+      await supabase
+        .from(table)
+        .update({ status: 'declined' })
+        .eq('id', invitation.id);
+
+      setInvitations((prev) => prev.filter((i) => i.id !== invitation.id));
+    } catch (err) {
+      console.error('Decline invitation error:', err);
+    }
+
+    setDecliningId(null);
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget || !user) return;
     setDeleting(true);
 
     try {
       if (deleteTarget.type === 'board') {
-        // Delete board (cascade will delete cards, members, invitations)
         const { error } = await supabase
           .from('boards')
           .delete()
           .eq('id', deleteTarget.id)
-          .eq('owner_id', user.id); // Safety: only owner can delete
+          .eq('owner_id', user.id);
 
         if (!error) {
           setMyBoards((prev) => prev.filter((b) => b.id !== deleteTarget.id));
@@ -145,12 +332,11 @@ export default function Sidebar({
           }
         }
       } else {
-        // Delete community (cascade will delete members, invitations)
         const { error } = await supabase
           .from('communities')
           .delete()
           .eq('id', deleteTarget.id)
-          .eq('owner_id', user.id); // Safety: only owner can delete
+          .eq('owner_id', user.id);
 
         if (!error) {
           setCommunities((prev) =>
@@ -182,8 +368,8 @@ export default function Sidebar({
     setCurrentView('community');
   };
 
-  // Check if user owns a community
   const isOwner = (community: Community) => community.owner_id === user?.id;
+  const pendingCount = invitations.length;
 
   return (
     <>
@@ -199,8 +385,8 @@ export default function Sidebar({
           <Image
             src={darkMode ? '/logo_dark_800w.png' : '/logo_white_800w.png'}
             alt="Watchr"
-            width={180}
-            height={60}
+            width={250}
+            height={100}
             className="h-12 w-auto"
           />
         </div>
@@ -288,7 +474,7 @@ export default function Sidebar({
             </div>
           </div>
 
-          {/* Shared Boards - No delete button for these */}
+          {/* Shared Boards */}
           {sharedBoards.length > 0 && (
             <div>
               <span
@@ -382,7 +568,6 @@ export default function Sidebar({
                       {comm.name}
                     </span>
                   </button>
-                  {/* Only show delete for communities you own */}
                   {isOwner(comm) && (
                     <button
                       onClick={() =>
@@ -409,6 +594,35 @@ export default function Sidebar({
           className="p-4 space-y-2"
           style={{ borderTop: `1px solid ${theme.border}` }}
         >
+          {/* Notifications */}
+          <button
+            onClick={() => {
+              setShowNotifications(true);
+              fetchInvitations();
+            }}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all relative"
+            style={{
+              backgroundColor: 'transparent',
+              color: theme.textSecondary,
+            }}
+          >
+            <div className="relative">
+              <Bell className="w-5 h-5" />
+              {pendingCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                  {pendingCount > 9 ? '9+' : pendingCount}
+                </span>
+              )}
+            </div>
+            <span className="text-sm font-medium">Notifications</span>
+            {pendingCount > 0 && (
+              <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-red-500 text-white">
+                {pendingCount} new
+              </span>
+            )}
+          </button>
+
+          {/* Settings */}
           <button
             onClick={() => setCurrentView('settings')}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all"
@@ -425,6 +639,7 @@ export default function Sidebar({
             <span className="text-sm font-medium">Settings</span>
           </button>
 
+          {/* Dark Mode Toggle */}
           <div className="flex items-center justify-between px-3 py-2">
             <div
               className="flex items-center gap-3"
@@ -455,6 +670,7 @@ export default function Sidebar({
             </button>
           </div>
 
+          {/* User */}
           <div className="flex items-center gap-3 px-3 py-2">
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center text-sm"
@@ -482,6 +698,131 @@ export default function Sidebar({
           </div>
         </div>
       </div>
+
+      {/* Notifications Modal */}
+      {showNotifications && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowNotifications(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl p-6 max-h-[80vh] overflow-hidden flex flex-col"
+            style={{
+              backgroundColor: theme.bgSecondary,
+              border: `1px solid ${theme.border}`,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Bell
+                  className="w-5 h-5"
+                  style={{ color: theme.accent.primary }}
+                />
+                <h2 className="text-lg font-bold" style={{ color: theme.text }}>
+                  Notifications
+                </h2>
+                {pendingCount > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-red-500 text-white">
+                    {pendingCount}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => setShowNotifications(false)}
+                className="p-2 rounded-full hover:bg-red-500/20"
+                style={{ color: theme.textMuted }}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto space-y-3">
+              {invitations.length === 0 ? (
+                <div className="text-center py-12">
+                  <Bell
+                    className="w-12 h-12 mx-auto mb-3"
+                    style={{ color: theme.textMuted }}
+                  />
+                  <p style={{ color: theme.textMuted }}>No notifications</p>
+                  <p
+                    className="text-sm mt-1"
+                    style={{ color: theme.textMuted }}
+                  >
+                    You're all caught up!
+                  </p>
+                </div>
+              ) : (
+                invitations.map((invitation) => (
+                  <div
+                    key={invitation.id}
+                    className="p-4 rounded-xl"
+                    style={{ backgroundColor: theme.bgTertiary }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
+                        style={{ backgroundColor: theme.accent.bg }}
+                      >
+                        {invitation.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm" style={{ color: theme.text }}>
+                          <span className="font-semibold">
+                            {invitation.inviter_username}
+                          </span>
+                          {' invited you to join '}
+                          <span className="font-semibold">
+                            {invitation.name}
+                          </span>
+                        </p>
+                        <p
+                          className="text-xs mt-1"
+                          style={{ color: theme.textMuted }}
+                        >
+                          {invitation.type === 'board'
+                            ? '📋 Board'
+                            : '👥 Community'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => handleDeclineInvitation(invitation)}
+                        disabled={decliningId === invitation.id}
+                        className="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                        style={{
+                          backgroundColor: theme.bgSecondary,
+                          color: theme.textSecondary,
+                        }}
+                      >
+                        {decliningId === invitation.id
+                          ? 'Declining...'
+                          : 'Decline'}
+                      </button>
+                      <button
+                        onClick={() => handleAcceptInvitation(invitation)}
+                        disabled={acceptingId === invitation.id}
+                        className="flex-1 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50 flex items-center justify-center gap-1"
+                        style={{ backgroundColor: theme.accent.primary }}
+                      >
+                        {acceptingId === invitation.id ? (
+                          'Accepting...'
+                        ) : (
+                          <>
+                            <Check className="w-4 h-4" />
+                            Accept
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {deleteTarget && (
