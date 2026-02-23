@@ -53,6 +53,7 @@ export default function CommunityView({
         .from('community_members')
         .select('user_id')
         .eq('community_id', communityId);
+
       if (!members?.length) {
         setLoading(false);
         return;
@@ -109,7 +110,7 @@ export default function CommunityView({
       const { data: myCards } = await supabase
         .from('cards')
         .select('tmdb_id')
-        .eq('added_by', user.id);
+        .eq('added_by', user?.id);
       if (myCards) setMyCardIds(new Set(myCards.map((c) => c.tmdb_id)));
 
       setLoading(false);
