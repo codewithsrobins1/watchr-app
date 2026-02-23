@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth, useTheme } from '@/hooks';
 import { createClient } from '@/lib/supabase/client';
 import type { Board, Community } from '@/types';
@@ -18,7 +18,6 @@ import {
   AlertTriangle,
   Bell,
   Check,
-  UserPlus,
 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -73,6 +72,95 @@ export default function Sidebar({
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [decliningId, setDecliningId] = useState<string | null>(null);
+
+  const fetchInvitations = useCallback(async () => {
+    if (!user) return;
+
+    const allInvitations: Invitation[] = [];
+
+    try {
+      // Fetch board invitations
+      const { data: boardInvites, error: boardError } = await supabase
+        .from('board_invitations')
+        .select(
+          `
+          id, 
+          board_id, 
+          inviter_id, 
+          created_at, 
+          boards(name, icon),
+          inviter:profiles!board_invitations_inviter_id_fkey(username, avatar_emoji)
+        `
+        )
+        .eq('invitee_id', user.id)
+        .eq('status', 'pending');
+
+      if (boardError) {
+        console.error('Board invitations error:', boardError);
+      }
+
+      if (boardInvites) {
+        boardInvites.forEach((inv: any) => {
+          if (inv.boards && inv.inviter) {
+            allInvitations.push({
+              id: inv.id,
+              type: 'board',
+              name: inv.boards.name,
+              icon: inv.boards.icon,
+              inviter_username: inv.inviter.username,
+              inviter_avatar: inv.inviter.avatar_emoji,
+              created_at: inv.created_at,
+            });
+          }
+        });
+      }
+
+      // Fetch community invitations
+      const { data: commInvites, error: commError } = await supabase
+        .from('community_invitations')
+        .select(
+          `
+          id, 
+          community_id, 
+          inviter_id, 
+          created_at, 
+          communities(name, icon),
+          inviter:profiles!community_invitations_inviter_id_fkey(username, avatar_emoji)
+        `
+        )
+        .eq('invitee_id', user.id)
+        .eq('status', 'pending');
+
+      if (commError) {
+        console.error('Community invitations error:', commError);
+      }
+
+      if (commInvites) {
+        commInvites.forEach((inv: any) => {
+          if (inv.communities && inv.inviter) {
+            allInvitations.push({
+              id: inv.id,
+              type: 'community',
+              name: inv.communities.name,
+              icon: inv.communities.icon,
+              inviter_username: inv.inviter.username,
+              inviter_avatar: inv.inviter.avatar_emoji,
+              created_at: inv.created_at,
+            });
+          }
+        });
+      }
+
+      setInvitations(
+        allInvitations.sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )
+      );
+    } catch (err) {
+      console.error('Fetch invitations error:', err);
+    }
+  }, [user, supabase]);
 
   useEffect(() => {
     if (!user) return;
@@ -134,7 +222,7 @@ export default function Sidebar({
           });
         }
 
-        // Fetch pending invitations
+        // Fetch invitations on initial load
         await fetchInvitations();
       } catch (err) {
         console.error('Sidebar fetch error:', err);
@@ -144,70 +232,47 @@ export default function Sidebar({
     };
 
     fetchData();
-  }, [user, supabase, selectedBoardId, setSelectedBoardId]);
 
-  const fetchInvitations = async () => {
-    if (!user) return;
-
-    const allInvitations: Invitation[] = [];
-
-    // Fetch board invitations
-    const { data: boardInvites } = await supabase
-      .from('board_invitations')
-      .select(
-        'id, board_id, inviter_id, created_at, boards(name, icon), profiles!board_invitations_inviter_id_fkey(username, avatar_emoji)'
-      )
-      .eq('invitee_id', user.id)
-      .eq('status', 'pending');
-
-    if (boardInvites) {
-      boardInvites.forEach((inv: any) => {
-        if (inv.boards && inv.profiles) {
-          allInvitations.push({
-            id: inv.id,
-            type: 'board',
-            name: inv.boards.name,
-            icon: inv.boards.icon,
-            inviter_username: inv.profiles.username,
-            inviter_avatar: inv.profiles.avatar_emoji,
-            created_at: inv.created_at,
-          });
+    // Set up realtime subscriptions for new invitations
+    const boardInvitesChannel = supabase
+      .channel(`board-invites-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'board_invitations',
+          filter: `invitee_id=eq.${user.id}`,
+        },
+        (payload) => {
+          console.log('New board invitation!', payload);
+          fetchInvitations();
         }
-      });
-    }
-
-    // Fetch community invitations
-    const { data: commInvites } = await supabase
-      .from('community_invitations')
-      .select(
-        'id, community_id, inviter_id, created_at, communities(name, icon), profiles!community_invitations_inviter_id_fkey(username, avatar_emoji)'
       )
-      .eq('invitee_id', user.id)
-      .eq('status', 'pending');
+      .subscribe();
 
-    if (commInvites) {
-      commInvites.forEach((inv: any) => {
-        if (inv.communities && inv.profiles) {
-          allInvitations.push({
-            id: inv.id,
-            type: 'community',
-            name: inv.communities.name,
-            icon: inv.communities.icon,
-            inviter_username: inv.profiles.username,
-            inviter_avatar: inv.profiles.avatar_emoji,
-            created_at: inv.created_at,
-          });
+    const commInvitesChannel = supabase
+      .channel(`comm-invites-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'community_invitations',
+          filter: `invitee_id=eq.${user.id}`,
+        },
+        (payload) => {
+          console.log('New community invitation!', payload);
+          fetchInvitations();
         }
-      });
-    }
-
-    setInvitations(
-      allInvitations.sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       )
-    );
-  };
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(boardInvitesChannel);
+      supabase.removeChannel(commInvitesChannel);
+    };
+  }, [user, supabase, selectedBoardId, setSelectedBoardId, fetchInvitations]);
 
   const handleAcceptInvitation = async (invitation: Invitation) => {
     if (!user) return;
@@ -215,7 +280,6 @@ export default function Sidebar({
 
     try {
       if (invitation.type === 'board') {
-        // Get board_id from invitation
         const { data: inv } = await supabase
           .from('board_invitations')
           .select('board_id')
@@ -223,20 +287,17 @@ export default function Sidebar({
           .single();
 
         if (inv) {
-          // Add as member
           await supabase.from('board_members').insert({
             board_id: inv.board_id,
             user_id: user.id,
             role: 'member',
           });
 
-          // Update invitation status
           await supabase
             .from('board_invitations')
             .update({ status: 'accepted' })
             .eq('id', invitation.id);
 
-          // Refresh shared boards
           const { data: board } = await supabase
             .from('boards')
             .select('*')
@@ -248,7 +309,6 @@ export default function Sidebar({
           }
         }
       } else {
-        // Get community_id from invitation
         const { data: inv } = await supabase
           .from('community_invitations')
           .select('community_id')
@@ -256,20 +316,17 @@ export default function Sidebar({
           .single();
 
         if (inv) {
-          // Add as member
           await supabase.from('community_members').insert({
             community_id: inv.community_id,
             user_id: user.id,
             role: 'member',
           });
 
-          // Update invitation status
           await supabase
             .from('community_invitations')
             .update({ status: 'accepted' })
             .eq('id', invitation.id);
 
-          // Refresh communities
           const { data: comm } = await supabase
             .from('communities')
             .select('*')
@@ -282,7 +339,6 @@ export default function Sidebar({
         }
       }
 
-      // Remove from invitations list
       setInvitations((prev) => prev.filter((i) => i.id !== invitation.id));
     } catch (err) {
       console.error('Accept invitation error:', err);
@@ -387,7 +443,7 @@ export default function Sidebar({
             alt="Watchr"
             width={250}
             height={100}
-            className="h-12 w-auto"
+            className="h-10 w-auto"
           />
         </div>
 

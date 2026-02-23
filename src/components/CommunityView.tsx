@@ -9,7 +9,7 @@ import {
   calculateAverageRating,
   ACCENT_COLORS,
 } from '@/lib/utils';
-import type { Community, CommunityFeedItem, Card } from '@/types';
+import type { Community, CommunityFeedItem } from '@/types';
 import StarRating from './StarRating';
 import InviteModal from './modals/InviteModal';
 import { UserPlus, Info, X, Loader2 } from 'lucide-react';
@@ -20,7 +20,7 @@ export default function CommunityView({
 }: {
   communityId: string | null;
 }) {
-  const { profile } = useAuth();
+  const { user } = useAuth();
   const { theme, darkMode } = useTheme();
   const supabase = createClient();
 
@@ -34,7 +34,7 @@ export default function CommunityView({
   const [adding, setAdding] = useState(false);
 
   useEffect(() => {
-    if (!communityId || !profile) {
+    if (!communityId || !user) {
       setLoading(false);
       return;
     }
@@ -109,23 +109,23 @@ export default function CommunityView({
       const { data: myCards } = await supabase
         .from('cards')
         .select('tmdb_id')
-        .eq('added_by', profile.id);
+        .eq('added_by', user.id);
       if (myCards) setMyCardIds(new Set(myCards.map((c) => c.tmdb_id)));
 
       setLoading(false);
     };
 
     fetchData();
-  }, [communityId, profile, supabase]);
+  }, [communityId, user, supabase]);
 
   const handleAddToBacklog = async () => {
-    if (!selected || !profile) return;
+    if (!selected || !user) return;
     setAdding(true);
 
     const { data: boards } = await supabase
       .from('boards')
       .select('id')
-      .eq('owner_id', profile.id)
+      .eq('owner_id', user.id)
       .limit(1);
     if (!boards?.length) {
       alert('Please create a board first!');
@@ -148,7 +148,7 @@ export default function CommunityView({
       position: 1000,
       rating: null,
       is_private: false,
-      added_by: profile.id,
+      added_by: user.id,
     });
 
     setMyCardIds((prev) => new Set([...Array.from(prev), selected.tmdb_id]));
@@ -236,21 +236,25 @@ export default function CommunityView({
 
                     {avgRating && (
                       <div className="flex items-center gap-1 mt-2">
-                        <StarRating rating={parseFloat(avgRating)} size="xs" />
-                        <span className="text-xs font-semibold text-yellow-400">
-                          {avgRating}
+                        <StarRating rating={Number(avgRating)} size="xs" />
+                        <span
+                          className="text-xs font-medium"
+                          style={{ color: '#facc15' }}
+                        >
+                          {Number(avgRating).toFixed(1)}
                         </span>
                       </div>
                     )}
 
-                    <div className="flex items-center gap-2 mt-2">
-                      <div className="flex -space-x-1.5">
+                    <div className="flex items-center gap-1 mt-2">
+                      <div className="flex -space-x-1">
                         {item.watchers.slice(0, 3).map((w, i) => (
                           <div
                             key={i}
                             className="w-5 h-5 rounded-full flex items-center justify-center text-xs border"
                             style={{
-                              backgroundColor: theme.bgTertiary,
+                              backgroundColor:
+                                ACCENT_COLORS[w.accent_color]?.bg,
                               borderColor:
                                 ACCENT_COLORS[w.accent_color]?.primary,
                             }}
