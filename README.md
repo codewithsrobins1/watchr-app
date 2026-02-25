@@ -21,32 +21,7 @@ A collaborative media tracking app with smooth drag & drop, real-time updates, a
 npm install
 ```
 
-### 2. Database Setup
-
-**Important:** If you have existing tables, drop them first:
-```sql
-DROP TABLE IF EXISTS community_invitations, board_invitations, 
-  community_members, communities, cards, board_members, boards, profiles CASCADE;
-```
-
-Then run the SQL from `supabase/migrations/001_schema.sql` in Supabase SQL Editor.
-
-### 3. Enable Realtime
-
-In Supabase Dashboard:
-1. Go to **Database** → **Tables**
-2. Click on **cards** table
-3. Click **Realtime** tab
-4. Toggle **Enable Realtime**
-
-### 4. Disable Email Confirmation (Optional)
-
-In Supabase Dashboard:
-1. Go to **Authentication** → **Providers**
-2. Click **Email**
-3. Toggle off **Confirm email**
-
-### 5. Environment Variables
+### 2. Environment Variables
 
 Create `.env.local`:
 ```
@@ -55,7 +30,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-key
 NEXT_PUBLIC_TMDB_API_KEY=your-tmdb-key
 ```
 
-### 6. Run
+### 3. Run
 ```bash
 npm run dev
 ```
@@ -72,53 +47,3 @@ npm run dev
 | 🔒 Privacy | Hide cards from community feeds |
 | 🎨 Themes | 7 accent colors + dark mode |
 | 📱 Mobile | Responsive with hamburger menu |
-
-## 🐛 Troubleshooting
-
-**Endless loader on refresh:**
-- Check browser console for errors
-- Verify Supabase URL and key are correct
-- Clear browser cache and try again
-
-**Cards not adding:**
-- Check browser console for errors
-- Verify you ran the latest SQL migration
-- Check RLS policies are correct
-
-**Changes not showing:**
-- Enable Realtime for cards table
-- Check Supabase connection
-
-## 📁 Project Structure
-
-```
-src/
-├── app/
-│   ├── page.tsx        # Main app
-│   ├── login/          # Login page
-│   └── signup/         # Signup with password validation
-├── components/
-│   ├── Sidebar.tsx     # Navigation
-│   ├── BoardView.tsx   # Kanban with @dnd-kit
-│   ├── CommunityView.tsx
-│   ├── SettingsView.tsx
-│   ├── StarRating.tsx
-│   ├── FilterDropdown.tsx
-│   └── modals/
-├── hooks/
-│   ├── useAuth.tsx     # Auth with timeout
-│   └── useTheme.tsx    # Theme management
-└── lib/
-    ├── utils.ts        # Helpers
-    ├── tmdb.ts         # TMDB API
-    └── supabase/
-```
-
-## 🚢 Deployment
-
-1. Push to GitHub
-2. Import to Vercel
-3. Add environment variables
-4. Deploy!
-
-Remember to update Supabase URL Configuration with your Vercel domain.
