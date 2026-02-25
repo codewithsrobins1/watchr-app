@@ -7,29 +7,13 @@ import type { Board, Community } from '@/types';
 import type { ViewType } from '@/app/page';
 import CreateBoardModal from './modals/CreateBoardModal';
 import CreateCommunityModal from './modals/CreateCommunityModal';
-import {
-  Settings,
-  LogOut,
-  Sun,
-  Moon,
-  Plus,
-  Trash2,
-  X,
-  AlertTriangle,
-  Bell,
-  Check,
-} from 'lucide-react';
 import Image from 'next/image';
-
-interface Invitation {
-  id: string;
-  type: 'board' | 'community';
-  name: string;
-  icon: string;
-  inviter_username: string;
-  inviter_avatar: string;
-  created_at: string;
-}
+import { BoardsSection } from './sidebar/BoardsSection';
+import { CommunitiesSection } from './sidebar/CommunitiesSection';
+import { FooterSection } from './sidebar/FooterSection';
+import { NotificationsModal } from './sidebar/NotificationsModal';
+import { ConfirmActionModal } from './sidebar/ConfirmActionModal';
+import type { Invitation, ConfirmAction, IsOwnerFn } from './sidebar/types';
 
 interface SidebarProps {
   currentView: ViewType;
@@ -60,15 +44,9 @@ export default function Sidebar({
   const [loading, setLoading] = useState(true);
 
   // Confirm action (delete/leave) modal
-  const [confirmAction, setConfirmAction] = useState<{
-    type:
-      | 'delete-board'
-      | 'delete-community'
-      | 'leave-board'
-      | 'leave-community';
-    id: string;
-    name: string;
-  } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(
+    null
+  );
   const [processing, setProcessing] = useState(false);
 
   // Notifications
@@ -453,8 +431,23 @@ export default function Sidebar({
     setCurrentView('community');
   };
 
-  const isOwner = (community: Community) => community.owner_id === user?.id;
+  const isOwner: IsOwnerFn = (community) => community.owner_id === user?.id;
   const pendingCount = invitations.length;
+
+  const handleSelectBoard = (boardId: string) => {
+    setSelectedBoardId(boardId);
+    setCurrentView('board');
+  };
+
+  const handleSelectCommunity = (communityId: string) => {
+    setSelectedCommunityId(communityId);
+    setCurrentView('community');
+  };
+
+  const handleOpenNotifications = () => {
+    setShowNotifications(true);
+    fetchInvitations();
+  };
 
   return (
     <>
@@ -476,556 +469,91 @@ export default function Sidebar({
           />
         </div>
 
-        {/* Create Board */}
-        <div className="px-4 mb-4">
-          <button
-            onClick={() => setShowCreateBoard(true)}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-white"
-            style={{ backgroundColor: theme.accent.primary }}
-          >
-            <Plus className="w-4 h-4" />
-            Create Board
-          </button>
-        </div>
-
         {/* Scrollable */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 space-y-6 min-h-0">
-          {/* My Boards */}
-          <div>
-            <span
-              className="text-xs font-semibold uppercase tracking-wider"
-              style={{ color: theme.textMuted }}
-            >
-              Your Boards
-            </span>
-            <div className="mt-2 space-y-1">
-              {loading ? (
-                <p
-                  className="text-sm px-3 py-2"
-                  style={{ color: theme.textMuted }}
-                >
-                  Loading...
-                </p>
-              ) : myBoards.length > 0 ? (
-                myBoards.map((board) => (
-                  <div key={board.id} className="group flex items-center">
-                    <button
-                      onClick={() => {
-                        setSelectedBoardId(board.id);
-                        setCurrentView('board');
-                      }}
-                      className="flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all"
-                      style={{
-                        backgroundColor:
-                          selectedBoardId === board.id &&
-                          currentView === 'board'
-                            ? theme.accent.bg
-                            : 'transparent',
-                        color:
-                          selectedBoardId === board.id &&
-                          currentView === 'board'
-                            ? theme.accent.primary
-                            : theme.textSecondary,
-                      }}
-                    >
-                      <span className="text-lg">{board.icon}</span>
-                      <span className="flex-1 truncate text-sm font-medium">
-                        {board.name}
-                      </span>
-                    </button>
-                    <button
-                      onClick={() =>
-                        setConfirmAction({
-                          type: 'delete-board',
-                          id: board.id,
-                          name: board.name,
-                        })
-                      }
-                      className="p-1.5 rounded-lg hidden group-hover:block hover:bg-red-500/20"
-                      title="Delete board"
-                    >
-                      <Trash2 className="w-4 h-4 text-red-500" />
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <p
-                  className="text-sm px-3 py-2"
-                  style={{ color: theme.textMuted }}
-                >
-                  No boards yet
-                </p>
-              )}
-            </div>
-          </div>
+          <BoardsSection
+            loading={loading}
+            myBoards={myBoards}
+            sharedBoards={sharedBoards}
+            currentView={currentView}
+            selectedBoardId={selectedBoardId}
+            onSelectBoard={handleSelectBoard}
+            onCreateBoardClick={() => setShowCreateBoard(true)}
+            onRequestDeleteBoard={(board) =>
+              setConfirmAction({
+                type: 'delete-board',
+                id: board.id,
+                name: board.name,
+              })
+            }
+            onRequestLeaveBoard={(board) =>
+              setConfirmAction({
+                type: 'leave-board',
+                id: board.id,
+                name: board.name,
+              })
+            }
+            theme={theme}
+          />
 
-          {/* Shared Boards */}
-          {sharedBoards.length > 0 && (
-            <div>
-              <span
-                className="text-xs font-semibold uppercase tracking-wider"
-                style={{ color: theme.textMuted }}
-              >
-                Shared Boards
-              </span>
-              <div className="mt-2 space-y-1">
-                {sharedBoards.map((board) => (
-                  <div key={board.id} className="group flex items-center">
-                    <button
-                      onClick={() => {
-                        setSelectedBoardId(board.id);
-                        setCurrentView('board');
-                      }}
-                      className="flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all"
-                      style={{
-                        backgroundColor:
-                          selectedBoardId === board.id &&
-                          currentView === 'board'
-                            ? theme.accent.bg
-                            : 'transparent',
-                        color:
-                          selectedBoardId === board.id &&
-                          currentView === 'board'
-                            ? theme.accent.primary
-                            : theme.textSecondary,
-                      }}
-                    >
-                      <span className="text-lg">{board.icon}</span>
-                      <span className="flex-1 truncate text-sm font-medium">
-                        {board.name}
-                      </span>
-                      <span
-                        className="text-xs px-1.5 py-0.5 rounded"
-                        style={{
-                          backgroundColor: theme.bgTertiary,
-                          color: theme.textMuted,
-                        }}
-                      >
-                        Shared
-                      </span>
-                    </button>
-                    <button
-                      onClick={() =>
-                        setConfirmAction({
-                          type: 'leave-board',
-                          id: board.id,
-                          name: board.name,
-                        })
-                      }
-                      className="p-1.5 rounded-lg hidden group-hover:block hover:bg-orange-500/20"
-                      title="Leave board"
-                    >
-                      <LogOut className="w-4 h-4 text-orange-500" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Communities */}
-          <div>
-            <span
-              className="text-xs font-semibold uppercase tracking-wider"
-              style={{ color: theme.textMuted }}
-            >
-              Community Feeds
-            </span>
-            <button
-              onClick={() => setShowCreateCommunity(true)}
-              className="w-full flex items-center gap-2 px-3 py-2 mt-2 rounded-lg font-medium transition-all"
-              style={{
-                backgroundColor: theme.accent.bg,
-                color: theme.accent.primary,
-              }}
-            >
-              <Plus className="w-4 h-4" />
-              <span className="text-sm">New Community</span>
-            </button>
-            <div className="mt-1 space-y-1">
-              {communities.map((comm) => (
-                <div key={comm.id} className="group flex items-center">
-                  <button
-                    onClick={() => {
-                      setSelectedCommunityId(comm.id);
-                      setCurrentView('community');
-                    }}
-                    className="flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all"
-                    style={{
-                      backgroundColor:
-                        selectedCommunityId === comm.id &&
-                        currentView === 'community'
-                          ? theme.accent.bg
-                          : 'transparent',
-                      color:
-                        selectedCommunityId === comm.id &&
-                        currentView === 'community'
-                          ? theme.accent.primary
-                          : theme.textSecondary,
-                    }}
-                  >
-                    <span className="text-lg">{comm.icon}</span>
-                    <span className="flex-1 truncate text-sm font-medium">
-                      {comm.name}
-                    </span>
-                  </button>
-                  {isOwner(comm) ? (
-                    <button
-                      onClick={() =>
-                        setConfirmAction({
-                          type: 'delete-community',
-                          id: comm.id,
-                          name: comm.name,
-                        })
-                      }
-                      className="p-1.5 rounded-lg hidden group-hover:block hover:bg-red-500/20"
-                      title="Delete community"
-                    >
-                      <Trash2 className="w-4 h-4 text-red-500" />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() =>
-                        setConfirmAction({
-                          type: 'leave-community',
-                          id: comm.id,
-                          name: comm.name,
-                        })
-                      }
-                      className="p-1.5 rounded-lg hidden group-hover:block hover:bg-orange-500/20"
-                      title="Leave community"
-                    >
-                      <LogOut className="w-4 h-4 text-orange-500" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          <CommunitiesSection
+            communities={communities}
+            currentView={currentView}
+            selectedCommunityId={selectedCommunityId}
+            onSelectCommunity={handleSelectCommunity}
+            onCreateCommunityClick={() => setShowCreateCommunity(true)}
+            onRequestDeleteCommunity={(community) =>
+              setConfirmAction({
+                type: 'delete-community',
+                id: community.id,
+                name: community.name,
+              })
+            }
+            onRequestLeaveCommunity={(community) =>
+              setConfirmAction({
+                type: 'leave-community',
+                id: community.id,
+                name: community.name,
+              })
+            }
+            isOwner={isOwner}
+            theme={theme}
+          />
         </div>
 
-        {/* Bottom */}
-        <div
-          className="p-3 sm:pb-4 space-y-2 flex-shrink-0"
-          style={{ borderTop: `1px solid ${theme.border}` }}
-        >
-          {/* Notifications */}
-          <button
-            onClick={() => {
-              setShowNotifications(true);
-              fetchInvitations();
-            }}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all relative"
-            style={{
-              backgroundColor: 'transparent',
-              color: theme.textSecondary,
-            }}
-          >
-            <div className="relative">
-              <Bell className="w-5 h-5" />
-              {pendingCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                  {pendingCount > 9 ? '9+' : pendingCount}
-                </span>
-              )}
-            </div>
-            <span className="text-sm font-medium">Notifications</span>
-            {pendingCount > 0 && (
-              <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-red-500 text-white">
-                {pendingCount} new
-              </span>
-            )}
-          </button>
-
-          {/* Settings */}
-          <button
-            onClick={() => setCurrentView('settings')}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all"
-            style={{
-              backgroundColor:
-                currentView === 'settings' ? theme.accent.bg : 'transparent',
-              color:
-                currentView === 'settings'
-                  ? theme.accent.primary
-                  : theme.textSecondary,
-            }}
-          >
-            <Settings className="w-5 h-5" />
-            <span className="text-sm font-medium">Settings</span>
-          </button>
-
-          {/* Dark Mode Toggle */}
-          <div className="flex items-center justify-between px-3 py-2">
-            <div
-              className="flex items-center gap-3"
-              style={{ color: theme.textSecondary }}
-            >
-              {darkMode ? (
-                <Moon className="w-5 h-5" />
-              ) : (
-                <Sun className="w-5 h-5" />
-              )}
-              <span className="text-sm font-medium">
-                {darkMode ? 'Dark' : 'Light'}
-              </span>
-            </div>
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className="w-10 h-6 rounded-full relative transition-all"
-              style={{
-                backgroundColor: darkMode
-                  ? theme.accent.primary
-                  : theme.bgTertiary,
-              }}
-            >
-              <div
-                className="absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all"
-                style={{ left: darkMode ? 'calc(100% - 20px)' : '4px' }}
-              />
-            </button>
-          </div>
-
-          {/* User */}
-          <div className="flex items-center gap-3 px-3 py-2">
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-sm"
-              style={{
-                backgroundColor: theme.accent.bg,
-                border: `2px solid ${theme.accent.primary}`,
-              }}
-            >
-              {profile?.avatar_emoji || '😎'}
-            </div>
-            <span
-              className="flex-1 text-sm font-medium truncate"
-              style={{ color: theme.text }}
-            >
-              {profile?.username || user?.email?.split('@')[0] || 'User'}
-            </span>
-            <button
-              onClick={signOut}
-              className="p-2 rounded-lg transition-all hover:bg-red-500/10"
-              style={{ color: theme.textMuted }}
-              title="Sign Out"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+        <FooterSection
+          currentView={currentView}
+          onChangeView={setCurrentView}
+          pendingCount={pendingCount}
+          darkMode={darkMode}
+          setDarkMode={setDarkMode}
+          profile={profile}
+          user={user}
+          onSignOut={signOut}
+          onOpenNotifications={handleOpenNotifications}
+          theme={theme}
+        />
       </div>
 
-      {/* Notifications Modal */}
-      {showNotifications && (
-        <div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowNotifications(false)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl p-6 max-h-[80vh] overflow-hidden flex flex-col"
-            style={{
-              backgroundColor: theme.bgSecondary,
-              border: `1px solid ${theme.border}`,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <Bell
-                  className="w-5 h-5"
-                  style={{ color: theme.accent.primary }}
-                />
-                <h2 className="text-lg font-bold" style={{ color: theme.text }}>
-                  Notifications
-                </h2>
-                {pendingCount > 0 && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-red-500 text-white">
-                    {pendingCount}
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={() => setShowNotifications(false)}
-                className="p-2 rounded-full hover:bg-red-500/20"
-                style={{ color: theme.textMuted }}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      <NotificationsModal
+        open={showNotifications}
+        onClose={() => setShowNotifications(false)}
+        invitations={invitations}
+        pendingCount={pendingCount}
+        acceptingId={acceptingId}
+        decliningId={decliningId}
+        onAcceptInvitation={handleAcceptInvitation}
+        onDeclineInvitation={handleDeclineInvitation}
+        theme={theme}
+      />
 
-            <div className="flex-1 overflow-auto space-y-3">
-              {invitations.length === 0 ? (
-                <div className="text-center py-12">
-                  <Bell
-                    className="w-12 h-12 mx-auto mb-3"
-                    style={{ color: theme.textMuted }}
-                  />
-                  <p style={{ color: theme.textMuted }}>No notifications</p>
-                  <p
-                    className="text-sm mt-1"
-                    style={{ color: theme.textMuted }}
-                  >
-                    You&apos;re all caught up!
-                  </p>
-                </div>
-              ) : (
-                invitations.map((invitation) => (
-                  <div
-                    key={invitation.id}
-                    className="p-4 rounded-xl"
-                    style={{ backgroundColor: theme.bgTertiary }}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
-                        style={{ backgroundColor: theme.accent.bg }}
-                      >
-                        {invitation.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm" style={{ color: theme.text }}>
-                          <span className="font-semibold">
-                            {invitation.inviter_username}
-                          </span>
-                          {' invited you to join '}
-                          <span className="font-semibold">
-                            {invitation.name}
-                          </span>
-                        </p>
-                        <p
-                          className="text-xs mt-1"
-                          style={{ color: theme.textMuted }}
-                        >
-                          {invitation.type === 'board'
-                            ? '📋 Board'
-                            : '👥 Community'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        onClick={() => handleDeclineInvitation(invitation)}
-                        disabled={decliningId === invitation.id}
-                        className="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-                        style={{
-                          backgroundColor: theme.bgSecondary,
-                          color: theme.textSecondary,
-                        }}
-                      >
-                        {decliningId === invitation.id
-                          ? 'Declining...'
-                          : 'Decline'}
-                      </button>
-                      <button
-                        onClick={() => handleAcceptInvitation(invitation)}
-                        disabled={acceptingId === invitation.id}
-                        className="flex-1 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50 flex items-center justify-center gap-1"
-                        style={{ backgroundColor: theme.accent.primary }}
-                      >
-                        {acceptingId === invitation.id ? (
-                          'Accepting...'
-                        ) : (
-                          <>
-                            <Check className="w-4 h-4" />
-                            Accept
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Confirm Action Modal (Delete/Leave) */}
-      {confirmAction && (
-        <div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
-          onClick={() => setConfirmAction(null)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl p-6"
-            style={{
-              backgroundColor: theme.bgSecondary,
-              border: `1px solid ${theme.border}`,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                  confirmAction.type.startsWith('leave')
-                    ? 'bg-orange-500/20'
-                    : 'bg-red-500/20'
-                }`}
-              >
-                {confirmAction.type.startsWith('leave') ? (
-                  <LogOut className="w-6 h-6 text-orange-500" />
-                ) : (
-                  <AlertTriangle className="w-6 h-6 text-red-500" />
-                )}
-              </div>
-              <div>
-                <h2 className="text-lg font-bold" style={{ color: theme.text }}>
-                  {confirmAction.type.startsWith('leave') ? 'Leave' : 'Delete'}{' '}
-                  {confirmAction.type.includes('board') ? 'Board' : 'Community'}
-                  ?
-                </h2>
-                <p className="text-sm" style={{ color: theme.textMuted }}>
-                  {confirmAction.type.startsWith('leave')
-                    ? 'You can rejoin if invited again'
-                    : 'This action cannot be undone'}
-                </p>
-              </div>
-            </div>
-
-            <p className="mb-6" style={{ color: theme.textSecondary }}>
-              Are you sure you want to{' '}
-              {confirmAction.type.startsWith('leave') ? 'leave' : 'delete'}{' '}
-              <strong style={{ color: theme.text }}>
-                {confirmAction.name}
-              </strong>
-              ?
-              {confirmAction.type === 'delete-board' &&
-                ' All cards will be permanently deleted.'}
-              {confirmAction.type === 'delete-community' &&
-                ' All members will be removed.'}
-            </p>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setConfirmAction(null)}
-                className="flex-1 py-3 rounded-xl font-medium"
-                style={{
-                  backgroundColor: theme.bgTertiary,
-                  color: theme.textSecondary,
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmAction}
-                disabled={processing}
-                className={`flex-1 py-3 rounded-xl font-medium text-white disabled:opacity-50 ${
-                  confirmAction.type.startsWith('leave')
-                    ? 'bg-orange-500 hover:bg-orange-600'
-                    : 'bg-red-500 hover:bg-red-600'
-                }`}
-              >
-                {processing
-                  ? confirmAction.type.startsWith('leave')
-                    ? 'Leaving...'
-                    : 'Deleting...'
-                  : confirmAction.type.startsWith('leave')
-                    ? 'Leave'
-                    : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmActionModal
+        action={confirmAction}
+        processing={processing}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={handleConfirmAction}
+        theme={theme}
+      />
 
       {showCreateBoard && (
         <CreateBoardModal
