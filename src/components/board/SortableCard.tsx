@@ -53,11 +53,11 @@ export function SortableCard({
         border: `1px solid ${theme.border}`,
         boxShadow: theme.shadow,
       }}
-      className="rounded-xl p-3.5 cursor-grab active:cursor-grabbing group card-hover"
+      className="relative w-full min-w-0 rounded-xl p-3.5 cursor-grab active:cursor-grabbing group card-hover"
       {...attributes}
       {...listeners}
     >
-      <div className="flex gap-3">
+      <div className="flex gap-3 min-w-0">
         <div className="relative w-14 h-20 flex-shrink-0">
           <Image
             src={getImageUrl(card.poster_path)}
@@ -76,15 +76,15 @@ export function SortableCard({
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-1">
+          <div className="flex items-start justify-between gap-1 min-w-0">
             <h3
-              className="font-medium text-sm leading-tight line-clamp-2"
+              className="min-w-0 font-medium text-sm leading-tight line-clamp-2"
               style={{ color: theme.text }}
             >
               {card.title}
             </h3>
 
-            <div className="flex gap-1 opacity-100 transition-opacity board:opacity-0 board:group-hover:opacity-100">
+            <div className="flex gap-1 flex-shrink-0 opacity-100 transition-opacity board:opacity-0 board:group-hover:opacity-100">
               <button
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
@@ -95,17 +95,6 @@ export function SortableCard({
                 style={{ backgroundColor: theme.bgTertiary }}
               >
                 <Info className="w-3.5 h-3.5" style={{ color: theme.textMuted }} />
-              </button>
-              <button
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMove();
-                }}
-                className="p-1 rounded board:hidden"
-                style={{ backgroundColor: theme.bgTertiary }}
-              >
-                <ArrowLeftRight className="w-3.5 h-3.5" style={{ color: theme.textMuted }} />
               </button>
               <button
                 onPointerDown={(e) => e.stopPropagation()}
@@ -149,6 +138,18 @@ export function SortableCard({
           )}
         </div>
       </div>
+
+      <button
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onMove();
+        }}
+        className="absolute bottom-2 right-2 p-2 rounded-full board:hidden"
+        style={{ backgroundColor: theme.bgTertiary, border: `1px solid ${theme.border}` }}
+      >
+        <ArrowLeftRight className="w-4 h-4" style={{ color: theme.textMuted }} />
+      </button>
     </div>
   );
 }
