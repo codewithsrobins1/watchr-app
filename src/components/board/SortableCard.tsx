@@ -4,13 +4,14 @@ import type { Card } from '@/types';
 import { getImageUrl, getDisplayType } from '@/lib/tmdb';
 import { getMediaTypeStyle, getGenreStyle, type Theme } from '@/lib/utils';
 import StarRating from '../StarRating';
-import { Info, Trash2, Lock } from 'lucide-react';
+import { Info, Trash2, Lock, ArrowLeftRight } from 'lucide-react';
 import Image from 'next/image';
 
 interface SortableCardProps {
   card: Card;
   onDelete: () => void;
   onShowInfo: () => void;
+  onMove: () => void;
   isDark: boolean;
   theme: Theme;
 }
@@ -19,6 +20,7 @@ export function SortableCard({
   card,
   onDelete,
   onShowInfo,
+  onMove,
   isDark,
   theme,
 }: SortableCardProps) {
@@ -82,7 +84,7 @@ export function SortableCard({
               {card.title}
             </h3>
 
-            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex gap-1 opacity-100 transition-opacity board:opacity-0 board:group-hover:opacity-100">
               <button
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
@@ -93,6 +95,17 @@ export function SortableCard({
                 style={{ backgroundColor: theme.bgTertiary }}
               >
                 <Info className="w-3.5 h-3.5" style={{ color: theme.textMuted }} />
+              </button>
+              <button
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMove();
+                }}
+                className="p-1 rounded board:hidden"
+                style={{ backgroundColor: theme.bgTertiary }}
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5" style={{ color: theme.textMuted }} />
               </button>
               <button
                 onPointerDown={(e) => e.stopPropagation()}

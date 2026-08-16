@@ -37,7 +37,7 @@ export function DroppableColumn({
   return (
     <div
       ref={setNodeRef}
-      className="rounded-xl p-4 h-full min-h-[400px] transition-all duration-200 flex flex-col"
+      className="rounded-xl p-4 h-full min-h-[400px] transition-all duration-200 flex flex-col w-[85vw] max-w-[340px] flex-shrink-0 snap-center board:w-auto board:max-w-none board:flex-shrink board:snap-align-none"
       style={{
         backgroundColor: showHighlight ? theme.accent.bg : theme.bg,
         boxShadow: theme.shadow,

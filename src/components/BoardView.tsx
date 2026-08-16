@@ -33,6 +33,7 @@ import { BoardSearch } from './board/BoardSearch'
 import { AddCardModal } from './board/AddCardModal'
 import { ReviewModal } from './board/ReviewModal'
 import { CardInfoModal } from './board/CardInfoModal'
+import { MoveCardModal } from './board/MoveCardModal'
 
 export default function BoardView({ boardId, onDeleted }: { boardId: string | null; onDeleted: () => void }) {
   const { user } = useAuth()
@@ -66,6 +67,7 @@ export default function BoardView({ boardId, onDeleted }: { boardId: string | nu
 
   const [showInvite, setShowInvite] = useState(false)
   const [showCardInfo, setShowCardInfo] = useState<Card | null>(null)
+  const [moveCardTarget, setMoveCardTarget] = useState<Card | null>(null)
 
   const [activeId, setActiveId] = useState<string | null>(null)
   const [activeColumn, setActiveColumn] = useState<ColumnId | null>(null)
@@ -294,13 +296,6 @@ export default function BoardView({ boardId, onDeleted }: { boardId: string | nu
       targetColumnId = overCard.column_id
     }
 
-    // Moving to finished - show review modal
-    if (targetColumnId === 'finished' && activeCard.column_id !== 'finished') {
-      setReviewCard(activeCard)
-      setShowReview(true)
-      return
-    }
-
     // Same column - reorder
     if (activeCard.column_id === targetColumnId) {
       const overCard = cards.find(c => c.id === overId)
@@ -308,11 +303,11 @@ export default function BoardView({ boardId, onDeleted }: { boardId: string | nu
         const columnCards = cards.filter(c => c.column_id === targetColumnId)
         const oldIndex = columnCards.findIndex(c => c.id === activeCardId)
         const newIndex = columnCards.findIndex(c => c.id === overId)
-        
+
         if (oldIndex !== -1 && newIndex !== -1) {
           const reordered = arrayMove(columnCards, oldIndex, newIndex)
           const updates = reordered.map((card, idx) => ({ ...card, position: (idx + 1) * 1000 }))
-          
+
           setCards(prev => {
             const others = prev.filter(c => c.column_id !== targetColumnId)
             return [...others, ...updates].sort((a, b) => a.position - b.position)
@@ -326,22 +321,35 @@ export default function BoardView({ boardId, onDeleted }: { boardId: string | nu
     }
     // Different column - move card
     else {
-      const targetCards = cards.filter(c => c.column_id === targetColumnId)
-      const newPosition = generatePosition(targetCards.map(c => c.position))
-
-      setCards(prev => prev.map(c =>
-        c.id === activeCardId
-          ? { ...c, column_id: targetColumnId, position: newPosition }
-          : c
-      ))
-
-      await updateDoc(doc(db, 'cards', activeCardId), {
-        column_id: targetColumnId,
-        position: newPosition,
-        updated_at: nowIso(),
-      })
+      await moveCardToColumn(activeCard, targetColumnId)
     }
   }
+
+  const moveCardToColumn = useCallback(async (card: Card, targetColumnId: ColumnId) => {
+    if (card.column_id === targetColumnId) return
+
+    // Moving to finished - show review modal instead of moving directly
+    if (targetColumnId === 'finished') {
+      setReviewCard(card)
+      setShowReview(true)
+      return
+    }
+
+    const targetCards = cards.filter(c => c.column_id === targetColumnId)
+    const newPosition = generatePosition(targetCards.map(c => c.position))
+
+    setCards(prev => prev.map(c =>
+      c.id === card.id
+        ? { ...c, column_id: targetColumnId, position: newPosition }
+        : c
+    ))
+
+    await updateDoc(doc(db, 'cards', card.id), {
+      column_id: targetColumnId,
+      position: newPosition,
+      updated_at: nowIso(),
+    })
+  }, [cards])
 
   const handleReviewSubmit = async () => {
     if (!reviewCard) return
@@ -430,7 +438,7 @@ export default function BoardView({ boardId, onDeleted }: { boardId: string | nu
         onDragOver={handleDragOver} 
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-stretch flex-1 min-h-0">
+        <div className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-2 items-stretch flex-1 min-h-0 board:grid board:grid-cols-4 board:overflow-visible board:snap-none board:pb-0">
           {COLUMNS.map(column => {
             const columnCards = getColumnCards(column.id)
             return (
@@ -443,13 +451,14 @@ export default function BoardView({ boardId, onDeleted }: { boardId: string | nu
                 theme={theme}
               >
                 {columnCards.map(card => (
-                  <SortableCard 
-                    key={card.id} 
-                    card={card} 
-                    isDark={darkMode} 
-                    theme={theme} 
-                    onDelete={() => handleDelete(card.id)} 
-                    onShowInfo={() => setShowCardInfo(card)} 
+                  <SortableCard
+                    key={card.id}
+                    card={card}
+                    isDark={darkMode}
+                    theme={theme}
+                    onDelete={() => handleDelete(card.id)}
+                    onShowInfo={() => setShowCardInfo(card)}
+                    onMove={() => setMoveCardTarget(card)}
                   />
                 ))}
               </DroppableColumn>
@@ -512,6 +521,17 @@ export default function BoardView({ boardId, onDeleted }: { boardId: string | nu
         card={showCardInfo}
         darkMode={darkMode}
         onClose={() => setShowCardInfo(null)}
+        theme={theme}
+      />
+
+      <MoveCardModal
+        open={!!moveCardTarget}
+        card={moveCardTarget}
+        onClose={() => setMoveCardTarget(null)}
+        onSelectColumn={(columnId) => {
+          if (moveCardTarget) moveCardToColumn(moveCardTarget, columnId)
+          setMoveCardTarget(null)
+        }}
         theme={theme}
       />
 
