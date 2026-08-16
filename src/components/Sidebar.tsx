@@ -1,8 +1,21 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth, useTheme } from '@/hooks';
-import { createClient } from '@/lib/supabase/client';
+import { db } from '@/lib/firebase/client';
+import { nowIso, getDocsByIds } from '@/lib/firebase/firestore';
+import {
+  collection,
+  doc,
+  addDoc,
+  updateDoc,
+  arrayUnion,
+  onSnapshot,
+  query,
+  where,
+  QueryDocumentSnapshot,
+  DocumentData,
+} from 'firebase/firestore';
 import type { Board, Community } from '@/types';
 import type { ViewType } from '@/app/page';
 import CreateBoardModal from './modals/CreateBoardModal';
@@ -12,8 +25,7 @@ import { BoardsSection } from './sidebar/BoardsSection';
 import { CommunitiesSection } from './sidebar/CommunitiesSection';
 import { FooterSection } from './sidebar/FooterSection';
 import { NotificationsModal } from './sidebar/NotificationsModal';
-import { ConfirmActionModal } from './sidebar/ConfirmActionModal';
-import type { Invitation, ConfirmAction, IsOwnerFn } from './sidebar/types';
+import type { Invitation } from './sidebar/types';
 
 interface SidebarProps {
   currentView: ViewType;
@@ -22,6 +34,48 @@ interface SidebarProps {
   setSelectedBoardId: (id: string | null) => void;
   selectedCommunityId: string | null;
   setSelectedCommunityId: (id: string | null) => void;
+}
+
+// Resolves the raw invitation docs (which only hold ids) into the display
+// shape the UI needs, batch-fetching the target board/community and inviter.
+async function resolveInvitations(
+  docs: QueryDocumentSnapshot<DocumentData>[],
+  type: 'board' | 'community'
+): Promise<Invitation[]> {
+  if (docs.length === 0) return [];
+
+  const idField = type === 'board' ? 'board_id' : 'community_id';
+  const targetCollection = type === 'board' ? 'boards' : 'communities';
+
+  const targetIds = docs.map((d) => d.data()[idField] as string);
+  const inviterIds = docs.map((d) => d.data().inviter_id as string);
+
+  const [targets, inviters] = await Promise.all([
+    getDocsByIds<{ name: string; icon: string }>(targetCollection, targetIds),
+    getDocsByIds<{ username: string; avatar_emoji: string }>('users', inviterIds),
+  ]);
+
+  const result: Invitation[] = [];
+  docs.forEach((d) => {
+    const data = d.data();
+    const targetId = data[idField] as string;
+    const target = targets[targetId];
+    const inviter = inviters[data.inviter_id];
+    if (!target || !inviter) return;
+
+    result.push({
+      id: d.id,
+      type,
+      target_id: targetId,
+      name: target.name,
+      icon: target.icon,
+      inviter_username: inviter.username,
+      inviter_avatar: inviter.avatar_emoji,
+      created_at: data.created_at,
+    });
+  });
+
+  return result;
 }
 
 export default function Sidebar({
@@ -34,7 +88,6 @@ export default function Sidebar({
 }: SidebarProps) {
   const { user, profile, signOut } = useAuth();
   const { theme, darkMode, setDarkMode } = useTheme();
-  const supabase = createClient();
 
   const [myBoards, setMyBoards] = useState<Board[]>([]);
   const [sharedBoards, setSharedBoards] = useState<Board[]>([]);
@@ -43,285 +96,125 @@ export default function Sidebar({
   const [showCreateCommunity, setShowCreateCommunity] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Confirm action (delete/leave) modal
-  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(
-    null
-  );
-  const [processing, setProcessing] = useState(false);
-
   // Notifications
   const [showNotifications, setShowNotifications] = useState(false);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [decliningId, setDecliningId] = useState<string | null>(null);
 
-  const fetchInvitations = useCallback(async () => {
+  // Boards/communities lists stay live via onSnapshot, so deleting or
+  // leaving one from inside BoardView/CommunityView is reflected here
+  // automatically without any cross-component callback wiring.
+  useEffect(() => {
     if (!user) return;
+    setLoading(true);
 
-    const allInvitations: Invitation[] = [];
+    const unsubBoards = onSnapshot(
+      query(collection(db, 'boards'), where('member_ids', 'array-contains', user.id)),
+      (snap) => {
+        const boards = snap.docs
+          .map((d) => ({ ...d.data(), id: d.id } as Board))
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    try {
-      // Fetch board invitations
-      const { data: boardInvites, error: boardError } = await supabase
-        .from('board_invitations')
-        .select(
-          `
-          id, 
-          board_id, 
-          inviter_id, 
-          created_at, 
-          boards(name, icon),
-          inviter:profiles!board_invitations_inviter_id_fkey(username, avatar_emoji)
-        `
-        )
-        .eq('invitee_id', user.id)
-        .eq('status', 'pending');
-
-      if (boardError) {
-        console.error('Board invitations error:', boardError);
+        const owned = boards.filter((b) => b.owner_id === user.id);
+        const shared = boards.filter((b) => b.owner_id !== user.id);
+        setMyBoards(owned);
+        setSharedBoards(shared);
+        if (owned.length > 0 && !selectedBoardId) {
+          setSelectedBoardId(owned[0].id);
+        }
+        setLoading(false);
       }
+    );
 
-      if (boardInvites) {
-        boardInvites.forEach((inv: any) => {
-          if (inv.boards && inv.inviter) {
-            allInvitations.push({
-              id: inv.id,
-              type: 'board',
-              name: inv.boards.name,
-              icon: inv.boards.icon,
-              inviter_username: inv.inviter.username,
-              inviter_avatar: inv.inviter.avatar_emoji,
-              created_at: inv.created_at,
-            });
-          }
-        });
+    const unsubCommunities = onSnapshot(
+      query(collection(db, 'communities'), where('member_ids', 'array-contains', user.id)),
+      (snap) => {
+        setCommunities(
+          snap.docs
+            .map((d) => ({ ...d.data(), id: d.id } as Community))
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        );
       }
+    );
 
-      // Fetch community invitations
-      const { data: commInvites, error: commError } = await supabase
-        .from('community_invitations')
-        .select(
-          `
-          id, 
-          community_id, 
-          inviter_id, 
-          created_at, 
-          communities(name, icon),
-          inviter:profiles!community_invitations_inviter_id_fkey(username, avatar_emoji)
-        `
-        )
-        .eq('invitee_id', user.id)
-        .eq('status', 'pending');
+    return () => {
+      unsubBoards();
+      unsubCommunities();
+    };
+  }, [user, selectedBoardId, setSelectedBoardId]);
 
-      if (commError) {
-        console.error('Community invitations error:', commError);
-      }
-
-      if (commInvites) {
-        commInvites.forEach((inv: any) => {
-          if (inv.communities && inv.inviter) {
-            allInvitations.push({
-              id: inv.id,
-              type: 'community',
-              name: inv.communities.name,
-              icon: inv.communities.icon,
-              inviter_username: inv.inviter.username,
-              inviter_avatar: inv.inviter.avatar_emoji,
-              created_at: inv.created_at,
-            });
-          }
-        });
-      }
-
-      setInvitations(
-        allInvitations.sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        )
-      );
-    } catch (err) {
-      console.error('Fetch invitations error:', err);
-    }
-  }, [user, supabase]);
-
+  // Live-updating pending invitations
   useEffect(() => {
     if (!user) return;
 
-    const fetchData = async () => {
-      setLoading(true);
+    const boardInvitesQuery = query(
+      collection(db, 'boardInvitations'),
+      where('invitee_id', '==', user.id),
+      where('status', '==', 'pending')
+    );
+    const commInvitesQuery = query(
+      collection(db, 'communityInvitations'),
+      where('invitee_id', '==', user.id),
+      where('status', '==', 'pending')
+    );
 
-      try {
-        const { data: boards } = await supabase
-          .from('boards')
-          .select('*')
-          .eq('owner_id', user.id)
-          .order('created_at', { ascending: false });
+    const unsubBoard = onSnapshot(boardInvitesQuery, async (snap) => {
+      const resolved = await resolveInvitations(snap.docs, 'board');
+      setInvitations((prev) =>
+        [...prev.filter((i) => i.type !== 'board'), ...resolved].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )
+      );
+    });
 
-        if (boards) {
-          setMyBoards(boards);
-          if (boards.length > 0 && !selectedBoardId) {
-            setSelectedBoardId(boards[0].id);
-          }
-        }
-
-        const { data: memberships } = await supabase
-          .from('board_members')
-          .select('board_id, boards(*)')
-          .eq('user_id', user.id)
-          .neq('role', 'owner');
-
-        if (memberships) {
-          const shared: Board[] = [];
-          memberships.forEach((m) => {
-            if (m.boards) shared.push(m.boards as unknown as Board);
-          });
-          setSharedBoards(shared);
-        }
-
-        const { data: communityMembers } = await supabase
-          .from('community_members')
-          .select('community_id')
-          .eq('user_id', user.id);
-
-        if (communityMembers && communityMembers.length > 0) {
-          const ids = communityMembers.map((m) => m.community_id);
-          const { data: comms } = await supabase
-            .from('communities')
-            .select('*')
-            .in('id', ids);
-          if (comms) setCommunities(comms);
-        }
-
-        const { data: owned } = await supabase
-          .from('communities')
-          .select('*')
-          .eq('owner_id', user.id);
-
-        if (owned) {
-          setCommunities((prev) => {
-            const existing = new Set(prev.map((c) => c.id));
-            return [...prev, ...owned.filter((c) => !existing.has(c.id))];
-          });
-        }
-
-        // Fetch invitations on initial load
-        await fetchInvitations();
-      } catch (err) {
-        console.error('Sidebar fetch error:', err);
-      }
-
-      setLoading(false);
-    };
-
-    fetchData();
-
-    // Set up realtime subscriptions for new invitations
-    const boardInvitesChannel = supabase
-      .channel(`board-invites-${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'board_invitations',
-          filter: `invitee_id=eq.${user.id}`,
-        },
-        (payload) => {
-          console.log('New board invitation!', payload);
-          fetchInvitations();
-        }
-      )
-      .subscribe();
-
-    const commInvitesChannel = supabase
-      .channel(`comm-invites-${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'community_invitations',
-          filter: `invitee_id=eq.${user.id}`,
-        },
-        (payload) => {
-          console.log('New community invitation!', payload);
-          fetchInvitations();
-        }
-      )
-      .subscribe();
+    const unsubComm = onSnapshot(commInvitesQuery, async (snap) => {
+      const resolved = await resolveInvitations(snap.docs, 'community');
+      setInvitations((prev) =>
+        [...prev.filter((i) => i.type !== 'community'), ...resolved].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )
+      );
+    });
 
     return () => {
-      supabase.removeChannel(boardInvitesChannel);
-      supabase.removeChannel(commInvitesChannel);
+      unsubBoard();
+      unsubComm();
     };
-  }, [user, supabase, selectedBoardId, setSelectedBoardId, fetchInvitations]);
+  }, [user]);
 
   const handleAcceptInvitation = async (invitation: Invitation) => {
     if (!user) return;
     setAcceptingId(invitation.id);
 
     try {
+      const timestamp = nowIso();
+
       if (invitation.type === 'board') {
-        const { data: inv } = await supabase
-          .from('board_invitations')
-          .select('board_id')
-          .eq('id', invitation.id)
-          .single();
-
-        if (inv) {
-          await supabase.from('board_members').insert({
-            board_id: inv.board_id,
-            user_id: user.id,
-            role: 'member',
-          });
-
-          await supabase
-            .from('board_invitations')
-            .update({ status: 'accepted' })
-            .eq('id', invitation.id);
-
-          const { data: board } = await supabase
-            .from('boards')
-            .select('*')
-            .eq('id', inv.board_id)
-            .single();
-
-          if (board) {
-            setSharedBoards((prev) => [...prev, board]);
-          }
-        }
+        await updateDoc(doc(db, 'boardInvitations', invitation.id), { status: 'accepted' });
+        await updateDoc(doc(db, 'boards', invitation.target_id), {
+          member_ids: arrayUnion(user.id),
+        });
+        await addDoc(collection(db, 'boardMembers'), {
+          board_id: invitation.target_id,
+          user_id: user.id,
+          role: 'member',
+          joined_at: timestamp,
+        });
       } else {
-        const { data: inv } = await supabase
-          .from('community_invitations')
-          .select('community_id')
-          .eq('id', invitation.id)
-          .single();
-
-        if (inv) {
-          await supabase.from('community_members').insert({
-            community_id: inv.community_id,
-            user_id: user.id,
-            role: 'member',
-          });
-
-          await supabase
-            .from('community_invitations')
-            .update({ status: 'accepted' })
-            .eq('id', invitation.id);
-
-          const { data: comm } = await supabase
-            .from('communities')
-            .select('*')
-            .eq('id', inv.community_id)
-            .single();
-
-          if (comm) {
-            setCommunities((prev) => [...prev, comm]);
-          }
-        }
+        await updateDoc(doc(db, 'communityInvitations', invitation.id), { status: 'accepted' });
+        await updateDoc(doc(db, 'communities', invitation.target_id), {
+          member_ids: arrayUnion(user.id),
+        });
+        await addDoc(collection(db, 'communityMembers'), {
+          community_id: invitation.target_id,
+          user_id: user.id,
+          role: 'member',
+          joined_at: timestamp,
+        });
       }
-
-      setInvitations((prev) => prev.filter((i) => i.id !== invitation.id));
+      // No need to touch myBoards/sharedBoards/communities here — the
+      // onSnapshot listener above picks up the member_ids change.
     } catch (err) {
       console.error('Accept invitation error:', err);
     }
@@ -333,16 +226,9 @@ export default function Sidebar({
     setDecliningId(invitation.id);
 
     try {
-      const table =
-        invitation.type === 'board'
-          ? 'board_invitations'
-          : 'community_invitations';
-      await supabase
-        .from(table)
-        .update({ status: 'declined' })
-        .eq('id', invitation.id);
-
-      setInvitations((prev) => prev.filter((i) => i.id !== invitation.id));
+      const collectionName =
+        invitation.type === 'board' ? 'boardInvitations' : 'communityInvitations';
+      await updateDoc(doc(db, collectionName, invitation.id), { status: 'declined' });
     } catch (err) {
       console.error('Decline invitation error:', err);
     }
@@ -350,88 +236,16 @@ export default function Sidebar({
     setDecliningId(null);
   };
 
-  const handleConfirmAction = async () => {
-    if (!confirmAction || !user) return;
-    setProcessing(true);
-
-    try {
-      if (confirmAction.type === 'delete-board') {
-        const { error } = await supabase
-          .from('boards')
-          .delete()
-          .eq('id', confirmAction.id)
-          .eq('owner_id', user.id);
-
-        if (!error) {
-          setMyBoards((prev) => prev.filter((b) => b.id !== confirmAction.id));
-          if (selectedBoardId === confirmAction.id) {
-            const remaining = myBoards.filter((b) => b.id !== confirmAction.id);
-            setSelectedBoardId(remaining.length > 0 ? remaining[0].id : null);
-          }
-        }
-      } else if (confirmAction.type === 'delete-community') {
-        const { error } = await supabase
-          .from('communities')
-          .delete()
-          .eq('id', confirmAction.id)
-          .eq('owner_id', user.id);
-
-        if (!error) {
-          setCommunities((prev) =>
-            prev.filter((c) => c.id !== confirmAction.id)
-          );
-          if (selectedCommunityId === confirmAction.id) {
-            setSelectedCommunityId(null);
-            setCurrentView('board');
-          }
-        }
-      } else if (confirmAction.type === 'leave-board') {
-        await supabase
-          .from('board_members')
-          .delete()
-          .eq('board_id', confirmAction.id)
-          .eq('user_id', user.id);
-
-        setSharedBoards((prev) =>
-          prev.filter((b) => b.id !== confirmAction.id)
-        );
-        if (selectedBoardId === confirmAction.id) {
-          setSelectedBoardId(myBoards.length > 0 ? myBoards[0].id : null);
-        }
-      } else if (confirmAction.type === 'leave-community') {
-        await supabase
-          .from('community_members')
-          .delete()
-          .eq('community_id', confirmAction.id)
-          .eq('user_id', user.id);
-
-        setCommunities((prev) => prev.filter((c) => c.id !== confirmAction.id));
-        if (selectedCommunityId === confirmAction.id) {
-          setSelectedCommunityId(null);
-          setCurrentView('board');
-        }
-      }
-    } catch (err) {
-      console.error('Action error:', err);
-    }
-
-    setProcessing(false);
-    setConfirmAction(null);
-  };
-
   const handleBoardCreated = (board: Board) => {
-    setMyBoards((prev) => [board, ...prev]);
     setSelectedBoardId(board.id);
     setCurrentView('board');
   };
 
   const handleCommunityCreated = (community: Community) => {
-    setCommunities((prev) => [community, ...prev]);
     setSelectedCommunityId(community.id);
     setCurrentView('community');
   };
 
-  const isOwner: IsOwnerFn = (community) => community.owner_id === user?.id;
   const pendingCount = invitations.length;
 
   const handleSelectBoard = (boardId: string) => {
@@ -446,7 +260,6 @@ export default function Sidebar({
 
   const handleOpenNotifications = () => {
     setShowNotifications(true);
-    fetchInvitations();
   };
 
   return (
@@ -479,20 +292,6 @@ export default function Sidebar({
             selectedBoardId={selectedBoardId}
             onSelectBoard={handleSelectBoard}
             onCreateBoardClick={() => setShowCreateBoard(true)}
-            onRequestDeleteBoard={(board) =>
-              setConfirmAction({
-                type: 'delete-board',
-                id: board.id,
-                name: board.name,
-              })
-            }
-            onRequestLeaveBoard={(board) =>
-              setConfirmAction({
-                type: 'leave-board',
-                id: board.id,
-                name: board.name,
-              })
-            }
             theme={theme}
           />
 
@@ -502,21 +301,6 @@ export default function Sidebar({
             selectedCommunityId={selectedCommunityId}
             onSelectCommunity={handleSelectCommunity}
             onCreateCommunityClick={() => setShowCreateCommunity(true)}
-            onRequestDeleteCommunity={(community) =>
-              setConfirmAction({
-                type: 'delete-community',
-                id: community.id,
-                name: community.name,
-              })
-            }
-            onRequestLeaveCommunity={(community) =>
-              setConfirmAction({
-                type: 'leave-community',
-                id: community.id,
-                name: community.name,
-              })
-            }
-            isOwner={isOwner}
             theme={theme}
           />
         </div>
@@ -544,14 +328,6 @@ export default function Sidebar({
         decliningId={decliningId}
         onAcceptInvitation={handleAcceptInvitation}
         onDeclineInvitation={handleDeclineInvitation}
-        theme={theme}
-      />
-
-      <ConfirmActionModal
-        action={confirmAction}
-        processing={processing}
-        onCancel={() => setConfirmAction(null)}
-        onConfirm={handleConfirmAction}
         theme={theme}
       />
 

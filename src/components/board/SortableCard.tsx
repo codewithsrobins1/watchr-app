@@ -2,7 +2,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Card } from '@/types';
 import { getImageUrl, getDisplayType } from '@/lib/tmdb';
-import { getMediaTypeStyle, getGenreStyle } from '@/lib/utils';
+import { getMediaTypeStyle, getGenreStyle, type Theme } from '@/lib/utils';
 import StarRating from '../StarRating';
 import { Info, Trash2, Lock } from 'lucide-react';
 import Image from 'next/image';
@@ -12,7 +12,7 @@ interface SortableCardProps {
   onDelete: () => void;
   onShowInfo: () => void;
   isDark: boolean;
-  theme: any;
+  theme: Theme;
 }
 
 export function SortableCard({
@@ -49,8 +49,9 @@ export function SortableCard({
         ...style,
         backgroundColor: theme.bgCard,
         border: `1px solid ${theme.border}`,
+        boxShadow: theme.shadow,
       }}
-      className="rounded-xl p-3 cursor-grab active:cursor-grabbing group card-hover"
+      className="rounded-xl p-3.5 cursor-grab active:cursor-grabbing group card-hover"
       {...attributes}
       {...listeners}
     >

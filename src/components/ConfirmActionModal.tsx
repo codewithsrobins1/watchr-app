@@ -1,12 +1,13 @@
 import { LogOut, AlertTriangle } from 'lucide-react';
-import type { ConfirmAction } from './types';
+import type { ConfirmAction } from '@/types';
+import type { Theme } from '@/lib/utils';
 
 interface ConfirmActionModalProps {
   action: ConfirmAction | null;
   processing: boolean;
   onCancel: () => void;
   onConfirm: () => void;
-  theme: any;
+  theme: Theme;
 }
 
 export function ConfirmActionModal({
@@ -23,11 +24,11 @@ export function ConfirmActionModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="modal-overlay fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-md rounded-2xl p-6"
+        className="modal-content w-full max-w-md rounded-2xl p-6"
         style={{
           backgroundColor: theme.bgSecondary,
           border: `1px solid ${theme.border}`,
@@ -100,4 +101,3 @@ export function ConfirmActionModal({
     </div>
   );
 }
-

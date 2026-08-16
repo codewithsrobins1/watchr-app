@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth, useTheme } from '@/hooks';
-import { createClient } from '@/lib/supabase/client';
+import { db } from '@/lib/firebase/client';
+import { nowIso } from '@/lib/firebase/firestore';
+import { collection, doc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import { ACCENT_COLORS } from '@/lib/utils';
 import type { Profile } from '@/types';
 import { X, Search, UserPlus, Check, Loader2 } from 'lucide-react';
@@ -13,6 +15,10 @@ interface InviteModalProps {
   onClose: () => void;
 }
 
+// Firestore's prefix-range trick: appending this max-codepoint char to the
+// upper bound turns a >=/<= pair into a "starts with" query.
+const PREFIX_RANGE_END = '';
+
 export default function InviteModal({
   type,
   targetId,
@@ -20,7 +26,6 @@ export default function InviteModal({
 }: InviteModalProps) {
   const { user } = useAuth();
   const { theme } = useTheme();
-  const supabase = createClient();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<Profile[]>([]);
@@ -28,7 +33,9 @@ export default function InviteModal({
   const [invitedIds, setInvitedIds] = useState<Set<string>>(new Set());
   const [inviting, setInviting] = useState<string | null>(null);
 
-  // Search users with debounce
+  // Search users with debounce. Firestore has no substring/OR search, so this
+  // approximates it with two prefix-range queries (username, email) merged
+  // client-side — a prefix match rather than Supabase's old "contains" match.
   useEffect(() => {
     if (!searchQuery.trim()) {
       setResults([]);
@@ -37,44 +44,60 @@ export default function InviteModal({
 
     setSearching(true);
     const timer = setTimeout(async () => {
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .or(`username.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`)
-        .neq('id', user?.id)
-        .limit(10);
+      const q = searchQuery.trim().toLowerCase();
+      const usersRef = collection(db, 'users');
 
-      if (data) setResults(data);
+      const [byUsername, byEmail] = await Promise.all([
+        getDocs(
+          query(
+            usersRef,
+            where('username', '>=', q),
+            where('username', '<=', q + PREFIX_RANGE_END)
+          )
+        ),
+        getDocs(
+          query(
+            usersRef,
+            where('email', '>=', q),
+            where('email', '<=', q + PREFIX_RANGE_END)
+          )
+        ),
+      ]);
+
+      const merged = new Map<string, Profile>();
+      [...byUsername.docs, ...byEmail.docs].forEach((d) => {
+        if (d.id !== user?.id) merged.set(d.id, { ...d.data(), id: d.id } as Profile);
+      });
+
+      setResults(Array.from(merged.values()).slice(0, 10));
       setSearching(false);
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchQuery, user?.id, supabase]);
+  }, [searchQuery, user?.id]);
 
   const handleInvite = async (userId: string) => {
     if (!user || invitedIds.has(userId)) return;
 
     setInviting(userId);
 
-    const tableName =
-      type === 'board' ? 'board_invitations' : 'community_invitations';
+    const collectionName =
+      type === 'board' ? 'boardInvitations' : 'communityInvitations';
     const idField = type === 'board' ? 'board_id' : 'community_id';
 
-    const { error } = await supabase.from(tableName).insert({
-      [idField]: targetId,
-      inviter_id: user.id,
-      invitee_id: userId,
-      status: 'pending',
-    });
-
-    if (error) {
-      console.error('Invite error:', error);
-      if (error.code === '23505') {
-        // Already invited
-        setInvitedIds((prev) => new Set([...Array.from(prev), userId]));
-      }
-    } else {
+    try {
+      // Deterministic id (target_invitee) makes re-inviting idempotent instead
+      // of erroring on a duplicate, matching the old forgiving UX.
+      await setDoc(doc(db, collectionName, `${targetId}_${userId}`), {
+        [idField]: targetId,
+        inviter_id: user.id,
+        invitee_id: userId,
+        status: 'pending',
+        created_at: nowIso(),
+      });
       setInvitedIds((prev) => new Set([...Array.from(prev), userId]));
+    } catch (err) {
+      console.error('Invite error:', err);
     }
 
     setInviting(null);
@@ -82,11 +105,11 @@ export default function InviteModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
+      className="modal-overlay fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
+        className="modal-content w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
         style={{
           backgroundColor: theme.bgSecondary,
           border: `1px solid ${theme.border}`,

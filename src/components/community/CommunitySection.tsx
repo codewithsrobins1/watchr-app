@@ -1,6 +1,6 @@
 import type { AccentColor, CommunityFeedItem } from '@/types';
 import { getImageUrl } from '@/lib/tmdb';
-import { getMediaTypeStyle, calculateAverageRating, ACCENT_COLORS } from '@/lib/utils';
+import { getMediaTypeStyle, calculateAverageRating, ACCENT_COLORS, type Theme } from '@/lib/utils';
 import StarRating from '../StarRating';
 import Image from 'next/image';
 
@@ -11,7 +11,7 @@ interface CommunitySectionProps {
   isWatching: boolean;
   onSelect: (item: CommunityFeedItem) => void;
   darkMode: boolean;
-  theme: any;
+  theme: Theme;
 }
 
 export function CommunitySection({
@@ -48,10 +48,11 @@ export function CommunitySection({
               <div
                 key={item.tmdb_id}
                 onClick={() => onSelect(item)}
-                className="rounded-xl p-4 cursor-pointer transition-all hover:scale-[1.02] hover:shadow-lg"
+                className="rounded-xl p-4 cursor-pointer transition-all hover:scale-[1.02]"
                 style={{
                   backgroundColor: theme.bgCard,
                   border: `1px solid ${theme.border}`,
+                  boxShadow: theme.shadow,
                 }}
               >
                 <div className="flex gap-3">

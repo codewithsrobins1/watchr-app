@@ -2,16 +2,29 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth, useTheme } from '@/hooks';
-import { createClient } from '@/lib/supabase/client';
+import { db } from '@/lib/firebase/client';
+import { nowIso, getDocsByIds } from '@/lib/firebase/firestore';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+} from 'firebase/firestore';
 import { getImageUrl } from '@/lib/tmdb';
 import {
   getMediaTypeStyle,
   calculateAverageRating,
   ACCENT_COLORS,
 } from '@/lib/utils';
-import type { Community, CommunityFeedItem, Board, AccentColor } from '@/types';
+import { deleteCommunityCascade, leaveCommunity } from '@/lib/firebase/actions';
+import type { Community, CommunityFeedItem, Board, AccentColor, Card, Profile, ConfirmAction } from '@/types';
 import StarRating from './StarRating';
 import InviteModal from './modals/InviteModal';
+import { ConfirmActionModal } from './ConfirmActionModal';
 import { UserPlus, Users, X, Loader2, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import { CommunityHeader } from './community/CommunityHeader';
@@ -23,12 +36,13 @@ import type { CommunityMember } from './community/types';
 
 export default function CommunityView({
   communityId,
+  onDeleted,
 }: {
   communityId: string | null;
+  onDeleted: () => void;
 }) {
   const { user } = useAuth();
   const { theme, darkMode } = useTheme();
-  const supabase = createClient();
 
   const [community, setCommunity] = useState<Community | null>(null);
   const [watching, setWatching] = useState<CommunityFeedItem[]>([]);
@@ -50,7 +64,35 @@ export default function CommunityView({
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<CommunityMember | null>(null);
 
+  // Delete/leave community (distinct from confirmRemove, which is for
+  // kicking a single member)
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [processingAction, setProcessingAction] = useState(false);
+
   const isOwner = community?.owner_id === user?.id;
+
+  const handleRequestDeleteOrLeave = () => {
+    if (!community) return;
+    setConfirmAction({ type: isOwner ? 'delete-community' : 'leave-community', name: community.name });
+  };
+
+  const handleConfirmDeleteOrLeave = async () => {
+    if (!confirmAction || !community || !user) return;
+    setProcessingAction(true);
+
+    try {
+      if (confirmAction.type === 'delete-community') {
+        await deleteCommunityCascade(community.id);
+      } else {
+        await leaveCommunity(community.id, user.id);
+      }
+      setConfirmAction(null);
+      onDeleted();
+    } catch (err) {
+      console.error('Delete/leave community error:', err);
+      setProcessingAction(false);
+    }
+  };
 
   useEffect(() => {
     if (!communityId || !user) {
@@ -61,105 +103,105 @@ export default function CommunityView({
     const fetchData = async () => {
       setLoading(true);
 
-      const { data: comm } = await supabase
-        .from('communities')
-        .select('*')
-        .eq('id', communityId)
-        .single();
-      if (comm) setCommunity(comm);
+      const commSnap = await getDoc(doc(db, 'communities', communityId));
+      if (commSnap.exists()) setCommunity({ ...commSnap.data(), id: commSnap.id } as Community);
 
-      const { data: membersData } = await supabase
-        .from('community_members')
-        .select('user_id')
-        .eq('community_id', communityId);
-      if (!membersData?.length) {
+      const membersSnap = await getDocs(
+        query(collection(db, 'communityMembers'), where('community_id', '==', communityId))
+      );
+      const memberIds = membersSnap.docs.map((d) => d.data().user_id as string);
+      if (memberIds.length === 0) {
         setLoading(false);
         return;
       }
 
-      const memberIds = membersData.map((m) => m.user_id);
-      const { data: cards } = await supabase
-        .from('cards')
-        .select(
-          '*, profiles:added_by(id, username, avatar_emoji, accent_color)'
+      // Firestore 'in' queries cap at 30 values, plenty for a low-use app.
+      const cardsSnap = await getDocs(
+        query(
+          collection(db, 'cards'),
+          where('added_by', 'in', memberIds.slice(0, 30)),
+          where('is_private', '==', false),
+          where('column_id', 'in', ['watching', 'finished'])
         )
-        .in('added_by', memberIds)
-        .eq('is_private', false)
-        .in('column_id', ['watching', 'finished']);
+      );
+      const cardDocs = cardsSnap.docs.map((d) => ({ ...d.data(), id: d.id } as Card));
+      const profiles = await getDocsByIds<Profile>('users', cardDocs.map((c) => c.added_by));
 
-      if (cards) {
-        const watchingMap = new Map<number, CommunityFeedItem>();
-        const finishedMap = new Map<number, CommunityFeedItem>();
+      const watchingMap = new Map<number, CommunityFeedItem>();
+      const finishedMap = new Map<number, CommunityFeedItem>();
 
-        cards.forEach((card: any) => {
-          const map = card.column_id === 'watching' ? watchingMap : finishedMap;
-          const watcher = {
-            user_id: card.profiles.id,
-            username: card.profiles.username,
-            avatar_emoji: card.profiles.avatar_emoji,
-            accent_color: card.profiles.accent_color,
-            rating: card.rating,
-            column_id: card.column_id,
-          };
+      cardDocs.forEach((card) => {
+        const addedByProfile = profiles[card.added_by];
+        if (!addedByProfile) return;
 
-          const existing = map.get(card.tmdb_id);
-          if (existing) {
-            existing.watchers.push(watcher);
-          } else {
-            map.set(card.tmdb_id, {
-              tmdb_id: card.tmdb_id,
-              media_type: card.media_type,
-              title: card.title,
-              poster_path: card.poster_path,
-              description: card.description,
-              genres: card.genres,
-              seasons_count: card.seasons_count,
-              episodes_count: card.episodes_count,
-              runtime: card.runtime,
-              watchers: [watcher],
-            });
-          }
-        });
+        const map = card.column_id === 'watching' ? watchingMap : finishedMap;
+        const watcher = {
+          user_id: addedByProfile.id,
+          username: addedByProfile.username,
+          avatar_emoji: addedByProfile.avatar_emoji,
+          accent_color: addedByProfile.accent_color,
+          rating: card.rating,
+          column_id: card.column_id,
+        };
 
-        setWatching(Array.from(watchingMap.values()));
-        setFinished(Array.from(finishedMap.values()));
-      }
+        const existing = map.get(card.tmdb_id);
+        if (existing) {
+          existing.watchers.push(watcher);
+        } else {
+          map.set(card.tmdb_id, {
+            tmdb_id: card.tmdb_id,
+            media_type: card.media_type,
+            title: card.title,
+            poster_path: card.poster_path,
+            description: card.description,
+            genres: card.genres,
+            seasons_count: card.seasons_count,
+            episodes_count: card.episodes_count,
+            runtime: card.runtime,
+            watchers: [watcher],
+          });
+        }
+      });
 
-      const { data: myCards } = await supabase
-        .from('cards')
-        .select('tmdb_id')
-        .eq('added_by', user.id);
-      if (myCards) setMyCardIds(new Set(myCards.map((c) => c.tmdb_id)));
+      setWatching(Array.from(watchingMap.values()));
+      setFinished(Array.from(finishedMap.values()));
+
+      const myCardsSnap = await getDocs(query(collection(db, 'cards'), where('added_by', '==', user.id)));
+      setMyCardIds(new Set(myCardsSnap.docs.map((d) => d.data().tmdb_id as number)));
 
       // Fetch user's boards for the board selector
-      const { data: boards } = await supabase
-        .from('boards')
-        .select('*')
-        .eq('owner_id', user.id)
-        .order('created_at', { ascending: false });
-      if (boards) {
-        setMyBoards(boards);
-        if (boards.length > 0) setSelectedBoardId(boards[0].id);
-      }
+      const boardsSnap = await getDocs(query(collection(db, 'boards'), where('owner_id', '==', user.id)));
+      const boards = boardsSnap.docs
+        .map((d) => ({ ...d.data(), id: d.id } as Board))
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setMyBoards(boards);
+      if (boards.length > 0) setSelectedBoardId(boards[0].id);
 
       setLoading(false);
     };
 
     fetchData();
-  }, [communityId, user, supabase]);
+  }, [communityId, user]);
 
   const fetchMembers = async () => {
     if (!communityId) return;
     setLoadingMembers(true);
 
-    const { data } = await supabase
-      .from('community_members')
-      .select('user_id, role, profile:profiles(id, username, avatar_emoji, accent_color)')
-      .eq('community_id', communityId);
+    const membersSnap = await getDocs(
+      query(collection(db, 'communityMembers'), where('community_id', '==', communityId))
+    );
+    const memberDocs = membersSnap.docs.map((d) => d.data() as { user_id: string; role: string });
+    const profiles = await getDocsByIds<Profile>('users', memberDocs.map((m) => m.user_id));
 
-    if (data) {
-      setMembers(data as unknown as CommunityMember[]);
-    }
+    setMembers(
+      memberDocs
+        .filter((m) => profiles[m.user_id])
+        .map((m) => ({
+          user_id: m.user_id,
+          role: m.role,
+          profile: profiles[m.user_id],
+        }))
+    );
     setLoadingMembers(false);
   };
 
@@ -167,11 +209,14 @@ export default function CommunityView({
     if (!confirmRemove || !communityId) return;
     setRemovingMemberId(confirmRemove.user_id);
 
-    await supabase
-      .from('community_members')
-      .delete()
-      .eq('community_id', communityId)
-      .eq('user_id', confirmRemove.user_id);
+    const memberSnap = await getDocs(
+      query(
+        collection(db, 'communityMembers'),
+        where('community_id', '==', communityId),
+        where('user_id', '==', confirmRemove.user_id)
+      )
+    );
+    await Promise.all(memberSnap.docs.map((d) => deleteDoc(d.ref)));
 
     setMembers((prev) => prev.filter((m) => m.user_id !== confirmRemove.user_id));
     setRemovingMemberId(null);
@@ -182,7 +227,8 @@ export default function CommunityView({
     if (!selected || !user || !selectedBoardId) return;
     setAdding(true);
 
-    await supabase.from('cards').insert({
+    const timestamp = nowIso();
+    await addDoc(collection(db, 'cards'), {
       board_id: selectedBoardId,
       tmdb_id: selected.tmdb_id,
       media_type: selected.media_type,
@@ -198,6 +244,8 @@ export default function CommunityView({
       rating: null,
       is_private: false,
       added_by: user.id,
+      created_at: timestamp,
+      updated_at: timestamp,
     });
 
     setMyCardIds((prev) => new Set([...Array.from(prev), selected.tmdb_id]));
@@ -241,6 +289,8 @@ export default function CommunityView({
           fetchMembers();
         }}
         onInvite={() => setShowInvite(true)}
+        isOwner={!!isOwner}
+        onRequestDeleteOrLeave={handleRequestDeleteOrLeave}
         theme={theme}
       />
 
@@ -308,6 +358,14 @@ export default function CommunityView({
           onClose={() => setShowInvite(false)}
         />
       )}
+
+      <ConfirmActionModal
+        action={confirmAction}
+        processing={processingAction}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={handleConfirmDeleteOrLeave}
+        theme={theme}
+      />
     </div>
   );
 }

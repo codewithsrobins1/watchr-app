@@ -116,13 +116,22 @@ export default function HomePage() {
           </span>
         </div>
 
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 flex flex-col min-h-0">
           {currentView === 'settings' ? (
             <SettingsView />
           ) : currentView === 'community' ? (
-            <CommunityView communityId={selectedCommunityId} />
+            <CommunityView
+              communityId={selectedCommunityId}
+              onDeleted={() => {
+                setSelectedCommunityId(null);
+                setCurrentView('board');
+              }}
+            />
           ) : (
-            <BoardView boardId={selectedBoardId} />
+            <BoardView
+              boardId={selectedBoardId}
+              onDeleted={() => setSelectedBoardId(null)}
+            />
           )}
         </main>
       </div>

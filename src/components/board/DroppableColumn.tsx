@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { Card } from '@/types';
+import type { Theme } from '@/lib/utils';
 
 export interface BoardColumn {
   id: string;
@@ -15,7 +16,7 @@ interface DroppableColumnProps {
   cards: Card[];
   children: ReactNode;
   isOver: boolean;
-  theme: any;
+  theme: Theme;
 }
 
 export function DroppableColumn({
@@ -36,16 +37,16 @@ export function DroppableColumn({
   return (
     <div
       ref={setNodeRef}
-      className="rounded-xl p-4 min-h-[400px] transition-all duration-200"
+      className="rounded-xl p-4 h-full min-h-[400px] transition-all duration-200 flex flex-col"
       style={{
-        backgroundColor: showHighlight ? theme.accent.bg : theme.bgSecondary,
+        backgroundColor: showHighlight ? theme.accent.bg : theme.bg,
         boxShadow: theme.shadow,
         border: showHighlight
-          ? `2px dashed ${theme.accent.primary}`
-          : '2px solid transparent',
+          ? `2px solid ${theme.accent.primary}`
+          : `1px solid ${theme.border}`,
       }}
     >
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-4 flex-shrink-0">
         <div className="w-3 h-3 rounded-full" style={{ backgroundColor: column.color }} />
         <h2 className="font-semibold" style={{ color: theme.text }}>
           {column.title}
@@ -59,15 +60,10 @@ export function DroppableColumn({
       </div>
 
       <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-        <div className="space-y-3 min-h-[200px]">
+        <div className={`flex-1 flex flex-col min-h-[200px] ${cards.length > 0 ? 'space-y-3 pt-1' : ''}`}>
           {children}
           {cards.length === 0 && (
-            <div
-              className="border-2 border-dashed rounded-xl p-8 text-center"
-              style={{
-                borderColor: showHighlight ? theme.accent.primary : theme.border,
-              }}
-            >
+            <div className="flex-1 flex items-center justify-center text-center">
               <p className="text-sm" style={{ color: theme.textMuted }}>
                 {showHighlight ? 'Drop here!' : 'Drag items here'}
               </p>

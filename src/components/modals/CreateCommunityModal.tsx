@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import { useAuth, useTheme } from '@/hooks'
-import { createClient } from '@/lib/supabase/client'
+import { db } from '@/lib/firebase/client'
+import { nowIso } from '@/lib/firebase/firestore'
+import { addDoc, collection } from 'firebase/firestore'
 import { BOARD_ICONS } from '@/lib/utils'
 import type { Community } from '@/types'
 import { X, Loader2 } from 'lucide-react'
@@ -15,7 +17,6 @@ interface CreateCommunityModalProps {
 export default function CreateCommunityModal({ onClose, onCreated }: CreateCommunityModalProps) {
   const { user } = useAuth()
   const { theme } = useTheme()
-  const supabase = createClient()
 
   const [name, setName] = useState('')
   const [icon, setIcon] = useState('👥')
@@ -30,38 +31,40 @@ export default function CreateCommunityModal({ onClose, onCreated }: CreateCommu
     setError('')
 
     try {
-      const { data: community, error: communityError } = await supabase
-        .from('communities')
-        .insert({ name: name.trim(), icon, owner_id: user.id })
-        .select()
-        .single()
-
-      if (communityError) {
-        console.error('Create community error:', communityError)
-        setError(communityError.message)
-        setLoading(false)
-        return
+      const timestamp = nowIso()
+      const communityData = {
+        name: name.trim(),
+        icon,
+        owner_id: user.id,
+        created_at: timestamp,
       }
 
-      await supabase.from('community_members').insert({
+      const communityRef = await addDoc(collection(db, 'communities'), {
+        ...communityData,
+        member_ids: [user.id],
+      })
+      const community: Community = { id: communityRef.id, ...communityData }
+
+      await addDoc(collection(db, 'communityMembers'), {
         community_id: community.id,
         user_id: user.id,
-        role: 'owner'
+        role: 'owner',
+        joined_at: timestamp,
       })
 
       onCreated(community)
       onClose()
-    } catch (err) {
+    } catch (err: any) {
       console.error('Create community exception:', err)
-      setError('Failed to create community')
+      setError(err.message || 'Failed to create community')
       setLoading(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4" onClick={onClose}>
-      <div 
-        className="w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
+    <div className="modal-overlay fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4" onClick={onClose}>
+      <div
+        className="modal-content w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
         style={{ backgroundColor: theme.bgSecondary, border: `1px solid ${theme.border}` }}
         onClick={e => e.stopPropagation()}
       >

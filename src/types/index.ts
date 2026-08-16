@@ -137,6 +137,17 @@ export interface PasswordRequirement {
   met: boolean
 }
 
+export type ConfirmActionType =
+  | 'delete-board'
+  | 'delete-community'
+  | 'leave-board'
+  | 'leave-community'
+
+export interface ConfirmAction {
+  type: ConfirmActionType
+  name: string
+}
+
 export interface FilterState {
   types: string[]
   genres: string[]

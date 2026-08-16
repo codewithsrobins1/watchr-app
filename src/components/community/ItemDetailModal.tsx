@@ -1,6 +1,6 @@
 import type { Board, CommunityFeedItem } from '@/types';
 import { getImageUrl } from '@/lib/tmdb';
-import { ACCENT_COLORS } from '@/lib/utils';
+import { ACCENT_COLORS, type Theme } from '@/lib/utils';
 import type { AccentColor } from '@/types';
 import StarRating from '../StarRating';
 import { X, Loader2 } from 'lucide-react';
@@ -16,7 +16,7 @@ interface ItemDetailModalProps {
   setSelectedBoardId: (id: string) => void;
   adding: boolean;
   onAddToBacklog: () => void;
-  theme: any;
+  theme: Theme;
 }
 
 export function ItemDetailModal({
@@ -35,11 +35,11 @@ export function ItemDetailModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
+      className="modal-overlay fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
+        className="modal-content w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
         style={{ backgroundColor: theme.bgSecondary }}
         onClick={(e) => e.stopPropagation()}
       >

@@ -1,0 +1,226 @@
+rules_version = '2';
+
+// This app is client-only (no server), so these rules are the entire
+// authorization layer — equivalent to the Postgres RLS policies Supabase
+// used to enforce. Collections mirror the old relational tables closely:
+// boards/communities carry a denormalized `member_ids` array so membership
+// can be checked without a join, and board/community invitations use a
+// deterministic `${targetId}_${inviteeId}` doc id so acceptance can be
+// verified with a single get() instead of a query.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function board(boardId) {
+      return get(/databases/$(database)/documents/boards/$(boardId)).data;
+    }
+
+    function community(communityId) {
+      return get(/databases/$(database)/documents/communities/$(communityId)).data;
+    }
+
+    function boardInvitation(boardId, userId) {
+      return get(/databases/$(database)/documents/boardInvitations/$(boardId + '_' + userId)).data;
+    }
+
+    function communityInvitation(communityId, userId) {
+      return get(/databases/$(database)/documents/communityInvitations/$(communityId + '_' + userId)).data;
+    }
+
+    // Profiles. Readable by any signed-in user (needed for the invite-by-
+    // username/email search and for showing member/inviter avatars), but
+    // only the owner can ever write their own doc.
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isSelf(userId);
+    }
+
+    match /boards/{boardId} {
+      // resource == null: a get() on an id that doesn't (or no longer)
+      // exist has no resource.data to check against — without this clause
+      // the field access below throws and Firestore denies the read, which
+      // surfaces as "permission-denied" instead of "not found" (e.g. a
+      // viewer whose board just got deleted by its owner).
+      // owner_id clause: owner is always in member_ids too, but this makes
+      // a `where('owner_id', '==', uid)` query (used for board-selector
+      // lookups) provable from its own filter — see the boardInvitations
+      // comment below for why that matters for list queries.
+      allow read: if signedIn() && (
+        resource == null ||
+        request.auth.uid in resource.data.member_ids ||
+        resource.data.owner_id == request.auth.uid
+      );
+
+      allow create: if signedIn()
+        && request.resource.data.owner_id == request.auth.uid
+        && request.resource.data.member_ids == [request.auth.uid];
+
+      // Any current member can edit (rename, or remove themselves to leave).
+      // A non-member can only add themselves, and only with an accepted invite.
+      allow update: if signedIn() && (
+        request.auth.uid in resource.data.member_ids ||
+        (
+          request.resource.data.member_ids == resource.data.member_ids.concat([request.auth.uid]) &&
+          boardInvitation(boardId, request.auth.uid).status == 'accepted'
+        )
+      );
+
+      allow delete: if signedIn() && request.auth.uid == resource.data.owner_id;
+    }
+
+    match /boardMembers/{memberId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.user_id == request.auth.uid
+        && (
+          (request.resource.data.role == 'owner' && board(request.resource.data.board_id).owner_id == request.auth.uid) ||
+          (request.resource.data.role == 'member' && boardInvitation(request.resource.data.board_id, request.auth.uid).status == 'accepted')
+        );
+
+      allow delete: if signedIn() && (
+        request.auth.uid == resource.data.user_id ||
+        board(resource.data.board_id).owner_id == request.auth.uid
+      );
+    }
+
+    match /boardInvitations/{inviteId} {
+      // The board-owner clause exists so a `where('board_id', '==', ...)`
+      // query (used for cascade cleanup on board delete) is provable from
+      // the query's own filter — Firestore rejects list queries outright
+      // unless the rule can be satisfied using only the query's constraints.
+      allow read: if signedIn() && (
+        request.auth.uid == resource.data.invitee_id ||
+        request.auth.uid == resource.data.inviter_id ||
+        board(resource.data.board_id).owner_id == request.auth.uid
+      );
+
+      allow create: if signedIn()
+        && request.resource.data.inviter_id == request.auth.uid
+        && inviteId == request.resource.data.board_id + '_' + request.resource.data.invitee_id
+        && request.auth.uid in board(request.resource.data.board_id).member_ids;
+
+      // Two writers, two directions: the invitee resolves a pending invite,
+      // or the inviter re-opens an already-resolved one (accepted/declined)
+      // back to pending to resend it — needed because InviteModal reuses the
+      // deterministic id via setDoc, which Firestore treats as an update
+      // once the doc exists (e.g. re-inviting someone who already declined,
+      // or who's already a member and gets clicked again).
+      allow update: if signedIn()
+        && request.resource.data.board_id == resource.data.board_id
+        && request.resource.data.invitee_id == resource.data.invitee_id
+        && request.resource.data.inviter_id == resource.data.inviter_id
+        && (
+          (
+            request.auth.uid == resource.data.invitee_id &&
+            resource.data.status == 'pending' &&
+            request.resource.data.status in ['accepted', 'declined']
+          ) ||
+          (
+            request.auth.uid == resource.data.inviter_id &&
+            resource.data.status != 'pending' &&
+            request.resource.data.status == 'pending' &&
+            request.auth.uid in board(resource.data.board_id).member_ids
+          )
+        );
+
+      // Only used for cascade cleanup when a board is deleted.
+      allow delete: if signedIn() && board(resource.data.board_id).owner_id == request.auth.uid;
+    }
+
+    match /cards/{cardId} {
+      // added_by clause makes a `where('added_by', '==', uid)` query (used
+      // to check which items the current user has already added) provable.
+      allow read: if signedIn() && (
+        resource == null ||
+        resource.data.is_private == false ||
+        resource.data.added_by == request.auth.uid ||
+        request.auth.uid in board(resource.data.board_id).member_ids
+      );
+
+      allow create: if signedIn()
+        && request.resource.data.added_by == request.auth.uid
+        && request.auth.uid in board(request.resource.data.board_id).member_ids;
+
+      allow update, delete: if signedIn() && request.auth.uid in board(resource.data.board_id).member_ids;
+    }
+
+    match /communities/{communityId} {
+      allow read: if signedIn() && (
+        resource == null ||
+        request.auth.uid in resource.data.member_ids ||
+        resource.data.owner_id == request.auth.uid
+      );
+
+      allow create: if signedIn()
+        && request.resource.data.owner_id == request.auth.uid
+        && request.resource.data.member_ids == [request.auth.uid];
+
+      allow update: if signedIn() && (
+        request.auth.uid in resource.data.member_ids ||
+        (
+          request.resource.data.member_ids == resource.data.member_ids.concat([request.auth.uid]) &&
+          communityInvitation(communityId, request.auth.uid).status == 'accepted'
+        )
+      );
+
+      allow delete: if signedIn() && request.auth.uid == resource.data.owner_id;
+    }
+
+    match /communityMembers/{memberId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.user_id == request.auth.uid
+        && (
+          (request.resource.data.role == 'owner' && community(request.resource.data.community_id).owner_id == request.auth.uid) ||
+          (request.resource.data.role == 'member' && communityInvitation(request.resource.data.community_id, request.auth.uid).status == 'accepted')
+        );
+
+      allow delete: if signedIn() && (
+        request.auth.uid == resource.data.user_id ||
+        community(resource.data.community_id).owner_id == request.auth.uid
+      );
+    }
+
+    match /communityInvitations/{inviteId} {
+      allow read: if signedIn() && (
+        request.auth.uid == resource.data.invitee_id ||
+        request.auth.uid == resource.data.inviter_id ||
+        community(resource.data.community_id).owner_id == request.auth.uid
+      );
+
+      allow create: if signedIn()
+        && request.resource.data.inviter_id == request.auth.uid
+        && inviteId == request.resource.data.community_id + '_' + request.resource.data.invitee_id
+        && request.auth.uid in community(request.resource.data.community_id).member_ids;
+
+      allow update: if signedIn()
+        && request.resource.data.community_id == resource.data.community_id
+        && request.resource.data.invitee_id == resource.data.invitee_id
+        && request.resource.data.inviter_id == resource.data.inviter_id
+        && (
+          (
+            request.auth.uid == resource.data.invitee_id &&
+            resource.data.status == 'pending' &&
+            request.resource.data.status in ['accepted', 'declined']
+          ) ||
+          (
+            request.auth.uid == resource.data.inviter_id &&
+            resource.data.status != 'pending' &&
+            request.resource.data.status == 'pending' &&
+            request.auth.uid in community(resource.data.community_id).member_ids
+          )
+        );
+
+      allow delete: if signedIn() && community(resource.data.community_id).owner_id == request.auth.uid;
+    }
+  }
+}

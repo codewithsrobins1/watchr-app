@@ -1,6 +1,6 @@
 import type { Card } from '@/types';
 import { getImageUrl } from '@/lib/tmdb';
-import { getGenreStyle } from '@/lib/utils';
+import { getGenreStyle, type Theme } from '@/lib/utils';
 import StarRating from '../StarRating';
 import { X, Lock } from 'lucide-react';
 import Image from 'next/image';
@@ -10,7 +10,7 @@ interface CardInfoModalProps {
   card: Card | null;
   darkMode: boolean;
   onClose: () => void;
-  theme: any;
+  theme: Theme;
 }
 
 export function CardInfoModal({
@@ -24,11 +24,11 @@ export function CardInfoModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
+      className="modal-overlay fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-2xl overflow-hidden max-h-[85vh] overflow-auto"
+        className="modal-content w-full max-w-lg rounded-2xl overflow-hidden max-h-[85vh] overflow-auto"
         style={{ backgroundColor: theme.bgSecondary }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -48,7 +48,10 @@ export function CardInfoModal({
 
         <div className="px-6 pb-6 -mt-16">
           <div className="flex gap-4">
-            <div className="relative w-24 h-36 flex-shrink-0 rounded-lg overflow-hidden shadow-lg">
+            <div
+              className="relative w-24 h-36 flex-shrink-0 rounded-lg overflow-hidden"
+              style={{ boxShadow: theme.shadowHeavy }}
+            >
               <Image
                 src={getImageUrl(card.poster_path, 'w342')}
                 alt={card.title}

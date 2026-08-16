@@ -2,7 +2,7 @@ import type { Board, BoardMember, ColumnId, Profile } from '@/types';
 import type { FilterState } from '@/types';
 import { ACCENT_COLORS } from '@/lib/utils';
 import FilterDropdown from '../FilterDropdown';
-import { Filter, UserPlus, X, Loader2, Pencil, Check } from 'lucide-react';
+import { Filter, UserPlus, X, Loader2, Pencil, Check, Trash2, LogOut } from 'lucide-react';
 
 interface BoardHeaderProps {
   board: Board | null;
@@ -20,6 +20,8 @@ interface BoardHeaderProps {
   setShowFilters: (open: boolean) => void;
   filterCount: number;
   onInvite: () => void;
+  isOwner: boolean;
+  onRequestDeleteOrLeave: () => void;
   darkMode: boolean;
   theme: any;
 }
@@ -40,6 +42,8 @@ export function BoardHeader({
   setShowFilters,
   filterCount,
   onInvite,
+  isOwner,
+  onRequestDeleteOrLeave,
   theme,
 }: BoardHeaderProps) {
   return (
@@ -96,11 +100,11 @@ export function BoardHeader({
             </h1>
             <button
               onClick={onStartEdit}
-              className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+              className="p-1.5 rounded-lg transition-colors hover:bg-opacity-80"
               style={{ backgroundColor: theme.bgTertiary }}
               title="Edit board name"
             >
-              <Pencil className="w-4 h-4" style={{ color: theme.textMuted }} />
+              <Pencil className="w-4 h-4" style={{ color: theme.accent.primary }} />
             </button>
           </div>
         )}
@@ -174,6 +178,19 @@ export function BoardHeader({
         >
           <UserPlus className="w-4 h-4" />
           <span className="hidden sm:inline">Invite</span>
+        </button>
+
+        <button
+          onClick={onRequestDeleteOrLeave}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium"
+          style={{
+            backgroundColor: isOwner ? 'rgba(239, 68, 68, 0.12)' : 'rgba(249, 115, 22, 0.12)',
+            color: isOwner ? '#ef4444' : '#f97316',
+          }}
+          title={isOwner ? 'Delete board' : 'Leave board'}
+        >
+          {isOwner ? <Trash2 className="w-4 h-4" /> : <LogOut className="w-4 h-4" />}
+          <span className="hidden sm:inline">{isOwner ? 'Delete' : 'Leave'}</span>
         </button>
       </div>
     </div>

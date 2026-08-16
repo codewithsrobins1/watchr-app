@@ -73,19 +73,25 @@ export function getGenreStyle(genre: string, isDark: boolean) {
 export function getThemeColors(isDark: boolean, accentColor: AccentColor) {
   const accent = ACCENT_COLORS[accentColor]
   return {
-    bg: isDark ? '#0a0a0f' : '#f5f3ff',
-    bgSecondary: isDark ? '#12121a' : '#ffffff',
-    bgTertiary: isDark ? '#1a1a24' : '#f8f7ff',
-    bgCard: isDark ? '#1e1e2a' : '#ffffff',
-    border: isDark ? '#2a2a3a' : '#e9e5ff',
-    text: isDark ? '#ffffff' : '#1e1b4b',
-    textSecondary: isDark ? '#a1a1aa' : '#6b7280',
-    textMuted: isDark ? '#52525b' : '#9ca3af',
+    bg: isDark ? '#0a0a0d' : '#f4f4f8',
+    bgSecondary: isDark ? '#131318' : '#ffffff',
+    bgTertiary: isDark ? '#1b1b22' : '#eceef3',
+    bgCard: isDark ? '#1f1f28' : '#fbfbfd',
+    border: isDark ? '#26262f' : '#e4e4ec',
+    text: isDark ? '#f2f2f5' : '#17171f',
+    textSecondary: isDark ? '#a1a1ab' : '#61616c',
+    textMuted: isDark ? '#6b6b76' : '#96969f',
     accent,
-    shadow: isDark ? '0 4px 6px -1px rgba(0,0,0,0.3)' : '0 4px 15px -3px rgba(139,92,246,0.15)',
-    shadowHeavy: isDark ? '0 10px 25px -5px rgba(0,0,0,0.4)' : '0 10px 30px -5px rgba(139,92,246,0.2)',
+    shadow: isDark
+      ? '0 1px 2px rgba(0,0,0,0.4), 0 2px 8px -2px rgba(0,0,0,0.35)'
+      : '0 1px 2px rgba(20,20,24,0.04), 0 4px 10px -4px rgba(20,20,24,0.10)',
+    shadowHeavy: isDark
+      ? '0 12px 32px -8px rgba(0,0,0,0.55), 0 4px 12px -4px rgba(0,0,0,0.4)'
+      : '0 8px 24px -6px rgba(20,20,24,0.14), 0 20px 40px -12px rgba(20,20,24,0.18)',
   }
 }
+
+export type Theme = ReturnType<typeof getThemeColors>
 
 // Password validation
 export function validatePassword(password: string): { isValid: boolean; requirements: PasswordRequirement[] } {

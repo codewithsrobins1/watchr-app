@@ -1,7 +1,7 @@
 import type { Community } from '@/types';
 import type { ViewType } from '@/app/page';
-import { Plus, Trash2, LogOut } from 'lucide-react';
-import type { IsOwnerFn } from './types';
+import type { Theme } from '@/lib/utils';
+import { Plus } from 'lucide-react';
 
 interface CommunitiesSectionProps {
   communities: Community[];
@@ -9,10 +9,7 @@ interface CommunitiesSectionProps {
   selectedCommunityId: string | null;
   onSelectCommunity: (communityId: string) => void;
   onCreateCommunityClick: () => void;
-  onRequestDeleteCommunity: (community: Community) => void;
-  onRequestLeaveCommunity: (community: Community) => void;
-  isOwner: IsOwnerFn;
-  theme: any;
+  theme: Theme;
 }
 
 export function CommunitiesSection({
@@ -21,9 +18,6 @@ export function CommunitiesSection({
   selectedCommunityId,
   onSelectCommunity,
   onCreateCommunityClick,
-  onRequestDeleteCommunity,
-  onRequestLeaveCommunity,
-  isOwner,
   theme,
 }: CommunitiesSectionProps) {
   return (
@@ -47,49 +41,33 @@ export function CommunitiesSection({
       </button>
       <div className="mt-1 space-y-1">
         {communities.map((comm) => (
-          <div key={comm.id} className="group flex items-center">
-            <button
-              onClick={() => onSelectCommunity(comm.id)}
-              className="flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all"
-              style={{
-                backgroundColor:
-                  selectedCommunityId === comm.id &&
-                  currentView === 'community'
-                    ? theme.accent.bg
-                    : 'transparent',
-                color:
-                  selectedCommunityId === comm.id &&
-                  currentView === 'community'
-                    ? theme.accent.primary
-                    : theme.textSecondary,
-              }}
-            >
-              <span className="text-lg">{comm.icon}</span>
-              <span className="flex-1 truncate text-sm font-medium">
-                {comm.name}
-              </span>
-            </button>
-            {isOwner(comm) ? (
-              <button
-                onClick={() => onRequestDeleteCommunity(comm)}
-                className="p-1.5 rounded-lg hidden group-hover:block hover:bg-red-500/20"
-                title="Delete community"
-              >
-                <Trash2 className="w-4 h-4 text-red-500" />
-              </button>
-            ) : (
-              <button
-                onClick={() => onRequestLeaveCommunity(comm)}
-                className="p-1.5 rounded-lg hidden group-hover:block hover:bg-orange-500/20"
-                title="Leave community"
-              >
-                <LogOut className="w-4 h-4 text-orange-500" />
-              </button>
-            )}
-          </div>
+          <button
+            key={comm.id}
+            onClick={() => onSelectCommunity(comm.id)}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all ${
+              selectedCommunityId === comm.id && currentView === 'community'
+                ? ''
+                : 'hover:bg-[var(--row-hover)]'
+            }`}
+            style={{
+              backgroundColor:
+                selectedCommunityId === comm.id && currentView === 'community'
+                  ? theme.accent.bg
+                  : 'transparent',
+              color:
+                selectedCommunityId === comm.id && currentView === 'community'
+                  ? theme.accent.primary
+                  : theme.textSecondary,
+              ['--row-hover' as string]: theme.bgTertiary,
+            }}
+          >
+            <span className="text-lg">{comm.icon}</span>
+            <span className="flex-1 truncate text-sm font-medium">
+              {comm.name}
+            </span>
+          </button>
         ))}
       </div>
     </div>
   );
 }
-

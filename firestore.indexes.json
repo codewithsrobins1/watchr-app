@@ -1,0 +1,30 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "cards",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "added_by", "order": "ASCENDING" },
+        { "fieldPath": "is_private", "order": "ASCENDING" },
+        { "fieldPath": "column_id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "boardInvitations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "invitee_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "communityInvitations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "invitee_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

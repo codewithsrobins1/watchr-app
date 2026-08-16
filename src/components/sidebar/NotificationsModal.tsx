@@ -1,5 +1,6 @@
 import { Bell, X, Check } from 'lucide-react';
 import type { Invitation } from './types';
+import type { Theme } from '@/lib/utils';
 
 interface NotificationsModalProps {
   open: boolean;
@@ -10,7 +11,7 @@ interface NotificationsModalProps {
   decliningId: string | null;
   onAcceptInvitation: (invitation: Invitation) => void;
   onDeclineInvitation: (invitation: Invitation) => void;
-  theme: any;
+  theme: Theme;
 }
 
 export function NotificationsModal({
@@ -28,11 +29,11 @@ export function NotificationsModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="modal-overlay fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl p-6 max-h-[80vh] overflow-hidden flex flex-col"
+        className="modal-content w-full max-w-md rounded-2xl p-6 max-h-[80vh] overflow-hidden flex flex-col"
         style={{
           backgroundColor: theme.bgSecondary,
           border: `1px solid ${theme.border}`,

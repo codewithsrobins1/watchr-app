@@ -4,11 +4,26 @@ import { useState, useEffect, useCallback } from 'react'
 import { DndContext, DragOverlay, rectIntersection, PointerSensor, useSensor, useSensors, DragStartEvent, DragEndEvent, DragOverEvent } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
 import { useAuth, useTheme } from '@/hooks'
-import { createClient } from '@/lib/supabase/client'
+import { db } from '@/lib/firebase/client'
+import { nowIso, getDocsByIds } from '@/lib/firebase/firestore'
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  updateDoc,
+  where,
+} from 'firebase/firestore'
 import { searchMedia, getMediaDetails, getImageUrl, mapGenreIds, getDisplayType } from '@/lib/tmdb'
 import { getMediaTypeStyle, getGenreStyle, COLUMNS, generatePosition, ACCENT_COLORS } from '@/lib/utils'
-import type { Card, Board, ColumnId, TMDBSearchResult, BoardMember, Profile } from '@/types'
+import { deleteBoardCascade, leaveBoard } from '@/lib/firebase/actions'
+import type { Card, Board, ColumnId, TMDBSearchResult, BoardMember, Profile, ConfirmAction } from '@/types'
 import InviteModal from './modals/InviteModal'
+import { ConfirmActionModal } from './ConfirmActionModal'
 import { Search, Filter, Trash2, Lock, UserPlus, X, Loader2, Info, Pencil, Check } from 'lucide-react'
 import Image from 'next/image'
 import { SortableCard } from './board/SortableCard'
@@ -19,15 +34,17 @@ import { AddCardModal } from './board/AddCardModal'
 import { ReviewModal } from './board/ReviewModal'
 import { CardInfoModal } from './board/CardInfoModal'
 
-export default function BoardView({ boardId }: { boardId: string | null }) {
+export default function BoardView({ boardId, onDeleted }: { boardId: string | null; onDeleted: () => void }) {
   const { user } = useAuth()
   const { theme, darkMode } = useTheme()
-  const supabase = createClient()
 
   const [board, setBoard] = useState<Board | null>(null)
   const [cards, setCards] = useState<Card[]>([])
   const [members, setMembers] = useState<(BoardMember & { profile: Profile })[]>([])
   const [loading, setLoading] = useState(true)
+
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
+  const [processingAction, setProcessingAction] = useState(false)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<TMDBSearchResult[]>([])
@@ -65,48 +82,42 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
   useEffect(() => {
     if (!boardId) { setLoading(false); return }
 
-    const fetchData = async () => {
-      setLoading(true)
-      
-      const { data: boardData } = await supabase.from('boards').select('*').eq('id', boardId).single()
-      if (boardData) {
+    let boardAndMembersLoaded = false
+    setLoading(true)
+
+    const fetchBoardAndMembers = async () => {
+      const boardSnap = await getDoc(doc(db, 'boards', boardId))
+      if (boardSnap.exists()) {
+        const boardData = { ...boardSnap.data(), id: boardSnap.id } as Board
         setBoard(boardData)
         setEditedName(boardData.name)
       }
 
-      const { data: cardsData } = await supabase
-        .from('cards')
-        .select('*')
-        .eq('board_id', boardId)
-        .order('position', { ascending: true })
-      if (cardsData) setCards(cardsData)
+      const membersSnap = await getDocs(query(collection(db, 'boardMembers'), where('board_id', '==', boardId)))
+      const memberDocs = membersSnap.docs.map(d => ({ ...d.data(), id: d.id } as BoardMember))
+      const profiles = await getDocsByIds<Profile>('users', memberDocs.map(m => m.user_id))
+      setMembers(memberDocs.map(m => ({ ...m, profile: profiles[m.user_id] })).filter(m => m.profile) as (BoardMember & { profile: Profile })[])
 
-      const { data: membersData } = await supabase
-        .from('board_members')
-        .select('*, profile:profiles(*)')
-        .eq('board_id', boardId)
-      if (membersData) setMembers(membersData as any)
-
+      boardAndMembersLoaded = true
       setLoading(false)
     }
 
-    fetchData()
+    fetchBoardAndMembers()
 
-    const channel = supabase
-      .channel(`board-${boardId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cards', filter: `board_id=eq.${boardId}` }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          setCards(prev => [...prev, payload.new as Card].sort((a, b) => a.position - b.position))
-        } else if (payload.eventType === 'UPDATE') {
-          setCards(prev => prev.map(c => c.id === payload.new.id ? payload.new as Card : c).sort((a, b) => a.position - b.position))
-        } else if (payload.eventType === 'DELETE') {
-          setCards(prev => prev.filter(c => c.id !== payload.old.id))
-        }
-      })
-      .subscribe()
+    // Cards stay live via onSnapshot instead of a one-time fetch.
+    const unsubscribe = onSnapshot(
+      query(collection(db, 'cards'), where('board_id', '==', boardId)),
+      (snap) => {
+        const cardsData = snap.docs
+          .map(d => ({ ...d.data(), id: d.id } as Card))
+          .sort((a, b) => a.position - b.position)
+        setCards(cardsData)
+        if (!boardAndMembersLoaded) setLoading(false)
+      }
+    )
 
-    return () => { supabase.removeChannel(channel) }
-  }, [boardId, supabase])
+    return () => { unsubscribe() }
+  }, [boardId])
 
   useEffect(() => {
     if (!searchQuery.trim()) { setSearchResults([]); setShowResults(false); return }
@@ -138,17 +149,40 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
     if (!boardId || !editedName.trim() || savingName) return
     setSavingName(true)
 
-    const { error } = await supabase
-      .from('boards')
-      .update({ name: editedName.trim() })
-      .eq('id', boardId)
-
-    if (!error) {
+    try {
+      await updateDoc(doc(db, 'boards', boardId), { name: editedName.trim(), updated_at: nowIso() })
       setBoard(prev => prev ? { ...prev, name: editedName.trim() } : null)
+    } catch (err) {
+      console.error('Save board name error:', err)
     }
 
     setSavingName(false)
     setIsEditingName(false)
+  }
+
+  const isOwner = !!(board && user && board.owner_id === user.id)
+
+  const handleRequestDeleteOrLeave = () => {
+    if (!board) return
+    setConfirmAction({ type: isOwner ? 'delete-board' : 'leave-board', name: board.name })
+  }
+
+  const handleConfirmDeleteOrLeave = async () => {
+    if (!confirmAction || !board || !user) return
+    setProcessingAction(true)
+
+    try {
+      if (confirmAction.type === 'delete-board') {
+        await deleteBoardCascade(board.id)
+      } else {
+        await leaveBoard(board.id, user.id)
+      }
+      setConfirmAction(null)
+      onDeleted()
+    } catch (err) {
+      console.error('Delete/leave board error:', err)
+      setProcessingAction(false)
+    }
   }
 
   const handleCancelEdit = () => {
@@ -165,6 +199,7 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
       const genres = details?.genres?.map(g => g.name) || mapGenreIds(selectedResult.genre_ids)
       const position = generatePosition(cards.filter(c => c.column_id === addColumn).map(c => c.position))
 
+      const timestamp = nowIso()
       const newCard = {
         board_id: boardId,
         tmdb_id: selectedResult.id,
@@ -181,16 +216,14 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
         rating: null,
         is_private: addPrivate,
         added_by: user.id,
+        created_at: timestamp,
+        updated_at: timestamp,
       }
 
-      const { error } = await supabase.from('cards').insert(newCard)
-      if (error) {
-        console.error('Add card error:', error)
-        alert('Failed to add card: ' + error.message)
-      }
-    } catch (err) {
+      await addDoc(collection(db, 'cards'), newCard)
+    } catch (err: any) {
       console.error('Add card exception:', err)
-      alert('Failed to add card')
+      alert('Failed to add card: ' + (err.message || ''))
     }
 
     setAddLoading(false)
@@ -203,7 +236,7 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
 
   const handleDelete = async (cardId: string) => {
     setCards(prev => prev.filter(c => c.id !== cardId))
-    await supabase.from('cards').delete().eq('id', cardId)
+    await deleteDoc(doc(db, 'cards', cardId))
   }
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -286,26 +319,27 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
           })
 
           for (const card of updates) {
-            await supabase.from('cards').update({ position: card.position }).eq('id', card.id)
+            await updateDoc(doc(db, 'cards', card.id), { position: card.position, updated_at: nowIso() })
           }
         }
       }
-    } 
+    }
     // Different column - move card
     else {
       const targetCards = cards.filter(c => c.column_id === targetColumnId)
       const newPosition = generatePosition(targetCards.map(c => c.position))
 
-      setCards(prev => prev.map(c => 
-        c.id === activeCardId 
-          ? { ...c, column_id: targetColumnId, position: newPosition } 
+      setCards(prev => prev.map(c =>
+        c.id === activeCardId
+          ? { ...c, column_id: targetColumnId, position: newPosition }
           : c
       ))
-      
-      await supabase.from('cards').update({ 
-        column_id: targetColumnId, 
-        position: newPosition 
-      }).eq('id', activeCardId)
+
+      await updateDoc(doc(db, 'cards', activeCardId), {
+        column_id: targetColumnId,
+        position: newPosition,
+        updated_at: nowIso(),
+      })
     }
   }
 
@@ -315,7 +349,12 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
     const newPosition = generatePosition(targetCards.map(c => c.position))
 
     setCards(prev => prev.map(c => c.id === reviewCard.id ? { ...c, column_id: 'finished', rating: reviewRating, position: newPosition } : c))
-    await supabase.from('cards').update({ column_id: 'finished', rating: reviewRating, position: newPosition }).eq('id', reviewCard.id)
+    await updateDoc(doc(db, 'cards', reviewCard.id), {
+      column_id: 'finished',
+      rating: reviewRating,
+      position: newPosition,
+      updated_at: nowIso(),
+    })
 
     setShowReview(false)
     setReviewCard(null)
@@ -346,7 +385,7 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
   }
 
   return (
-    <div className="flex-1 p-4 lg:p-6 overflow-auto">
+    <div className="flex-1 p-4 lg:p-6 overflow-auto flex flex-col min-h-0">
       <BoardHeader
         board={board}
         members={members}
@@ -363,6 +402,8 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
         setShowFilters={setShowFilters}
         filterCount={filterCount}
         onInvite={() => setShowInvite(true)}
+        isOwner={isOwner}
+        onRequestDeleteOrLeave={handleRequestDeleteOrLeave}
         darkMode={darkMode}
         theme={theme}
       />
@@ -389,7 +430,7 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
         onDragOver={handleDragOver} 
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-stretch flex-1 min-h-0">
           {COLUMNS.map(column => {
             const columnCards = getColumnCards(column.id)
             return (
@@ -475,6 +516,14 @@ export default function BoardView({ boardId }: { boardId: string | null }) {
       />
 
       {showInvite && boardId && <InviteModal type="board" targetId={boardId} onClose={() => setShowInvite(false)} />}
+
+      <ConfirmActionModal
+        action={confirmAction}
+        processing={processingAction}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={handleConfirmDeleteOrLeave}
+        theme={theme}
+      />
     </div>
   )
 }

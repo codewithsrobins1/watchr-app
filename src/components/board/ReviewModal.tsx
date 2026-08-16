@@ -1,4 +1,5 @@
 import type { Card } from '@/types';
+import type { Theme } from '@/lib/utils';
 import StarRating from '../StarRating';
 
 interface ReviewModalProps {
@@ -8,7 +9,7 @@ interface ReviewModalProps {
   setReviewRating: (value: number) => void;
   onClose: () => void;
   onSubmit: () => void;
-  theme: any;
+  theme: Theme;
 }
 
 export function ReviewModal({
@@ -24,11 +25,11 @@ export function ReviewModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
+      className="modal-overlay fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
+        className="modal-content w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
         style={{ backgroundColor: theme.bgSecondary }}
         onClick={(e) => e.stopPropagation()}
       >

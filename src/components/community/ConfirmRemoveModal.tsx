@@ -1,5 +1,6 @@
 import { Trash2 } from 'lucide-react';
 import type { CommunityMember } from './types';
+import type { Theme } from '@/lib/utils';
 
 interface ConfirmRemoveModalProps {
   open: boolean;
@@ -7,7 +8,7 @@ interface ConfirmRemoveModalProps {
   removingMemberId: string | null;
   onClose: () => void;
   onConfirm: () => void;
-  theme: any;
+  theme: Theme;
 }
 
 export function ConfirmRemoveModal({
@@ -24,11 +25,11 @@ export function ConfirmRemoveModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4"
+      className="modal-overlay fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl p-6"
+        className="modal-content w-full max-w-sm rounded-2xl p-6"
         style={{
           backgroundColor: theme.bgSecondary,
           border: `1px solid ${theme.border}`,

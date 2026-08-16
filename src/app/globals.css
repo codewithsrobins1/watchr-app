@@ -3,18 +3,12 @@
 @tailwind utilities;
 
 :root {
-  --background: #f5f3ff;
-  --foreground: #1e1b4b;
-  --card: #ffffff;
-  --border: #e9e5ff;
+  --border: #e4e4ec;
   --accent: #8b5cf6;
 }
 
 .dark {
-  --background: #0a0a0f;
-  --foreground: #ffffff;
-  --card: #1e1e2a;
-  --border: #2a2a3a;
+  --border: #26262f;
 }
 
 * {
@@ -26,7 +20,6 @@
 html, body {
   max-width: 100vw;
   overflow-x: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 /* Scrollbar */
@@ -94,32 +87,6 @@ html, body {
   transform: rotate(3deg);
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   cursor: grabbing !important;
-}
-
-.drop-indicator {
-  position: relative;
-}
-
-.drop-indicator::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--accent);
-  border-radius: 2px;
-  animation: pulse 1s ease infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-/* Column drag over state */
-.column-drag-over {
-  background: rgba(139, 92, 246, 0.08) !important;
-  border: 2px dashed rgba(139, 92, 246, 0.4) !important;
 }
 
 /* Sortable item transition */

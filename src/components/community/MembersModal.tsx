@@ -1,5 +1,5 @@
 import type { AccentColor } from '@/types';
-import { ACCENT_COLORS } from '@/lib/utils';
+import { ACCENT_COLORS, type Theme } from '@/lib/utils';
 import { Users, X, Loader2, Trash2 } from 'lucide-react';
 import type { CommunityMember } from './types';
 
@@ -12,7 +12,7 @@ interface MembersModalProps {
   currentUserId?: string;
   removingMemberId: string | null;
   onRequestRemove: (member: CommunityMember) => void;
-  theme: any;
+  theme: Theme;
 }
 
 export function MembersModal({
@@ -30,11 +30,11 @@ export function MembersModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
+      className="modal-overlay fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
+        className="modal-content w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
         style={{
           backgroundColor: theme.bgSecondary,
           border: `1px solid ${theme.border}`,

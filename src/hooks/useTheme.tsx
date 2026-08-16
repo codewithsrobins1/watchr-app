@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import type { AccentColor } from '@/types'
-import { getThemeColors } from '@/lib/utils'
+import { getThemeColors, ACCENT_COLORS } from '@/lib/utils'
 
 type ThemeColors = ReturnType<typeof getThemeColors>
 
@@ -50,6 +50,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     document.documentElement.classList.toggle('dark', darkMode)
     localStorage.setItem('watchr-dark-mode', String(darkMode))
   }, [darkMode, mounted])
+
+  useEffect(() => {
+    if (!mounted) return
+    document.documentElement.style.setProperty('--accent', ACCENT_COLORS[accentColor].primary)
+  }, [accentColor, mounted])
 
   const setDarkMode = (value: boolean) => {
     setDarkModeState(value)

@@ -1,5 +1,5 @@
 import type { ColumnId, TMDBSearchResult } from '@/types';
-import { COLUMNS } from '@/lib/utils';
+import { COLUMNS, type Theme } from '@/lib/utils';
 import { getImageUrl } from '@/lib/tmdb';
 import { X, Loader2, Lock } from 'lucide-react';
 import Image from 'next/image';
@@ -14,7 +14,7 @@ interface AddCardModalProps {
   addLoading: boolean;
   onClose: () => void;
   onAdd: () => void;
-  theme: any;
+  theme: Theme;
 }
 
 export function AddCardModal({
@@ -33,11 +33,11 @@ export function AddCardModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
+      className="modal-overlay fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
+        className="modal-content w-full max-w-md rounded-2xl p-6 max-h-[85vh] overflow-auto"
         style={{
           backgroundColor: theme.bgSecondary,
           border: `1px solid ${theme.border}`,

@@ -1,10 +1,12 @@
 import type { Community } from '@/types';
-import { UserPlus, Users } from 'lucide-react';
+import { UserPlus, Users, Trash2, LogOut } from 'lucide-react';
 
 interface CommunityHeaderProps {
   community: Community | null;
   onOpenMembers: () => void;
   onInvite: () => void;
+  isOwner: boolean;
+  onRequestDeleteOrLeave: () => void;
   theme: any;
 }
 
@@ -12,6 +14,8 @@ export function CommunityHeader({
   community,
   onOpenMembers,
   onInvite,
+  isOwner,
+  onRequestDeleteOrLeave,
   theme,
 }: CommunityHeaderProps) {
   return (
@@ -48,6 +52,19 @@ export function CommunityHeader({
         >
           <UserPlus className="w-4 h-4" />
           Invite
+        </button>
+
+        <button
+          onClick={onRequestDeleteOrLeave}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl font-medium"
+          style={{
+            backgroundColor: isOwner ? 'rgba(239, 68, 68, 0.12)' : 'rgba(249, 115, 22, 0.12)',
+            color: isOwner ? '#ef4444' : '#f97316',
+          }}
+          title={isOwner ? 'Delete community' : 'Leave community'}
+        >
+          {isOwner ? <Trash2 className="w-4 h-4" /> : <LogOut className="w-4 h-4" />}
+          <span className="hidden sm:inline">{isOwner ? 'Delete' : 'Leave'}</span>
         </button>
       </div>
     </div>
